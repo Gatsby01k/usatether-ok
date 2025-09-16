@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
-import AuthWidget from '../components/AuthWidget'
-import DepositForm from '../components/DepositForm'
-import Dashboard from '../components/Dashboard'
+import AuthWidget from '@/components/ui/AuthWidget.jsx'
+import DepositForm from '@/components/ui/DepositForm.jsx'
+import Dashboard from '@/components/ui/Dashboard.jsx'
 
 export default function Cabinet(){
   const [user, setUser] = useState(null)
