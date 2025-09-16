@@ -1,3 +1,4 @@
+import Cabinet from './pages/Cabinet.jsx'
 import React, { useEffect, useMemo, useState } from "react";
 import { HashRouter as Router, Routes, Route, Link, useNavigate, Navigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -608,6 +609,7 @@ export default function App() {
         <Router>
           <Nav />
           <Routes>
+            <Route path="/cabinet" element={<Cabinet />} />
             <Route path="/" element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
