@@ -436,7 +436,7 @@ function Login() {
               <Label htmlFor="pwd">Password</Label>
               <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
             </div>
-            <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Continue</Button>{error && <p className=\"text-red-600 text-sm mt-2\">{error}</p>}
+            <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Continue</Button>{error && <p className="text-red-600 text-sm mt-2">{error}</p>}
           </form>
         </CardContent>
       </Card>
@@ -482,7 +482,7 @@ function Signup() {
               <Label htmlFor="pwd">Password</Label>
               <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
             </div>
-            <Button type="submit" className="gap-2"><Lock className="h-4 w-4"/> Create account</Button>{error && <p className=\"text-red-600 text-sm mt-2\">{error}</p>}
+            <Button type="submit" className="gap-2"><Lock className="h-4 w-4"/> Create account</Button>{error && <p className="text-red-600 text-sm mt-2">{error}</p>}
           </form>
         </CardContent>
       </Card>
