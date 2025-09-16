@@ -1,0 +1,65 @@
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabaseClient'
+import AuthWidget from '../components/AuthWidget'
+import DepositForm from '../components/DepositForm'
+import Dashboard from '../components/Dashboard'
+
+export default function Cabinet(){
+  const [user, setUser] = useState(null)
+  const [token, setToken] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [working, setWorking] = useState(false)
+
+  useEffect(() => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        setUser(session.user)
+        setToken(session.access_token)
+      }
+      setLoading(false)
+    })()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setUser(session.user)
+        setToken(session.access_token)
+      } else {
+        setUser(null)
+        setToken('')
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  async function handleAuth(u, t){
+    setUser(u)
+    setToken(t)
+  }
+
+  async function submitDeposit(amount){
+    setWorking(true)
+    await fetch('/api/deposits', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ amount })
+    }).then(r=>r.json()).catch(()=>{})
+    setWorking(false)
+  }
+
+  if (loading) return <div className="p-6">Загрузка…</div>
+  if (!user) return <AuthWidget onAuth={handleAuth} />
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="max-w-2xl mx-auto rounded-2xl border p-6">
+        <h2 className="text-xl font-semibold mb-2">Пополнение баланса</h2>
+        <DepositForm onSubmit={submitDeposit} loading={working} />
+        <p className="text-xs mt-4 opacity-70">После пополнения баланс и история обновятся ниже.</p>
+      </div>
+      <Dashboard token={token} />
+      <footer className="text-center text-xs opacity-70 pt-8">
+        Связь: <a href="mailto:info@usatether.io" className="underline">info@usatether.io</a>
+      </footer>
+    </div>
+  )
+}
