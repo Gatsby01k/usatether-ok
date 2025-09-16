@@ -9,7 +9,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { createClient } from '@supabase/supabase-js';
 
+
+// Supabase client
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+  { auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true } }
+);
 // ============================================================
 // USATether – Single-File React SPA (no server, deploy anywhere)
 // - Static, client-side routing
@@ -57,23 +65,42 @@ function useTheme() {
 }
 
 // ---------- Auth (mock) ----------
-function useAuth() {
-  const [user, setUser] = useState(() => {
-    const raw = localStorage.getItem("usat:user");
-    return raw ? JSON.parse(raw) : null;
-  });
-  const login = (email) => {
-    const u = { email, name: email.split("@")[0] };
-    setUser(u);
-    localStorage.setItem("usat:user", JSON.stringify(u));
-  };
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem("usat:user");
-  };
-  return { user, login, logout };
-}
 
+function useAuth() {
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    // initial load
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data?.session?.user ?? null);
+    });
+    // subscribe to auth changes
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => {
+      try { sub.subscription.unsubscribe(); } catch {}
+    };
+  }, []);
+
+  const login = async (email, password) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return true;
+  };
+
+  const signup = async (email, password) => {
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
+    return true;
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  return { user, login, signup, logout };
+}
 function Protected({ children }) {
   const { user } = useAuthContext();
   if (!user) return <Navigate to="/login" replace />;
@@ -377,10 +404,20 @@ function Login() {
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
-  const onSubmit = (e) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const onSubmit = async (e) => {
     e.preventDefault();
-    login(email);
-    nav("/dashboard");
+    setError("");
+    setLoading(true);
+    try {
+      await login(email, pwd);
+      nav("/dashboard");
+    } catch (err) {
+      setError(err?.message || 'Auth error');
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
@@ -399,7 +436,7 @@ function Login() {
               <Label htmlFor="pwd">Password</Label>
               <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
             </div>
-            <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Continue</Button>
+            <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Continue</Button>{error && <p className=\"text-red-600 text-sm mt-2\">{error}</p>}
           </form>
         </CardContent>
       </Card>
@@ -409,14 +446,24 @@ function Login() {
 }
 
 function Signup() {
-  const { login } = useAuthContext();
+  const { signup } = useAuthContext();
   const nav = useNavigate();
   const [email, setEmail] = useState("");
   const [pwd, setPwd] = useState("");
-  const onSubmit = (e) => {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const onSubmit = async (e) => {
     e.preventDefault();
-    login(email);
-    nav("/dashboard");
+    setError("");
+    setLoading(true);
+    try {
+      await signup(email, pwd);
+      nav("/dashboard");
+    } catch (err) {
+      setError(err?.message || 'Sign up error');
+    } finally {
+      setLoading(false);
+    }
   };
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
@@ -435,7 +482,7 @@ function Signup() {
               <Label htmlFor="pwd">Password</Label>
               <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
             </div>
-            <Button type="submit" className="gap-2"><Lock className="h-4 w-4"/> Create account</Button>
+            <Button type="submit" className="gap-2"><Lock className="h-4 w-4"/> Create account</Button>{error && <p className=\"text-red-600 text-sm mt-2\">{error}</p>}
           </form>
         </CardContent>
       </Card>
