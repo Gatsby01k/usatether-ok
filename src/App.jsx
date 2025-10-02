@@ -10,19 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-
-
-// Supabase client
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-  { auth: { autoRefreshToken: true, persistSession: true, detectSessionInUrl: true } }
-);
 // ============================================================
-// USATether – Single-File React SPA (no server, deploy anywhere)
-// - Static, client-side routing
-// - Mock auth (localStorage)
-// - 25% monthly return is user-specified; this is DEMO ONLY
+// USATether – React SPA (без Supabase)
+// Auth: magic-link через /api/auth/request и /api/auth/verify
+// JWT хранится в localStorage под ключом "jwt"
 // ============================================================
 
 // ---------- Utilities ----------
@@ -54,6 +45,11 @@ function clsx(...arr) {
   return arr.filter(Boolean).join(" ");
 }
 
+function authHeader() {
+  const t = localStorage.getItem('jwt');
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+
 // ---------- Theme ----------
 function useTheme() {
   const [dark, setDark] = useState(() => localStorage.getItem("usat:dark") === "1");
@@ -64,52 +60,78 @@ function useTheme() {
   return { dark, setDark };
 }
 
-// ---------- Auth (mock) ----------
+// ---------- Auth (JWT + /api/me) ----------
+const AuthContext = React.createContext(null);
+function useAuthContext() { return React.useContext(AuthContext); }
 
 function useAuth() {
   const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  // 1) Если пришли по magic-link (?token=...), подтвердить и сохранить jwt
   useEffect(() => {
-    // initial load
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data?.session?.user ?? null);
-    });
-    // subscribe to auth changes
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => {
-      try { sub.subscription.unsubscribe(); } catch {}
-    };
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      if (token) {
+        try {
+          const r = await fetch(`/api/auth/verify?token=${token}`);
+          const data = await r.json();
+          if (r.ok && data.token) {
+            localStorage.setItem('jwt', data.token);
+            // чистим URL
+            window.history.replaceState({}, '', window.location.pathname);
+          }
+        } catch {}
+      }
+    })();
   }, []);
 
-  const login = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  // 2) Подтянуть профиль по JWT
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch('/api/me', { headers: { 'Content-Type': 'application/json', ...authHeader() } });
+        if (r.ok) {
+          const me = await r.json();
+          setUser(me);
+        } else {
+          setUser(null);
+        }
+      } catch {
+        setUser(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  const requestLoginLink = async (email) => {
+    const r = await fetch('/api/auth/request', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    if (!r.ok) {
+      const j = await r.json().catch(()=>({}));
+      throw new Error(j.error || 'request_failed');
+    }
     return true;
   };
 
-  const signup = async (email, password) => {
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
-    return true;
+  const logout = () => {
+    localStorage.removeItem('jwt');
+    setUser(null);
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  return { user, login, signup, logout };
+  return { user, loading, requestLoginLink, logout };
 }
+
 function Protected({ children }) {
-  const { user } = useAuthContext();
+  const { user, loading } = useAuthContext();
+  if (loading) return null;
   if (!user) return <Navigate to="/login" replace />;
   return children;
-}
-
-const AuthContext = React.createContext(null);
-function useAuthContext() {
-  return React.useContext(AuthContext);
 }
 
 // ---------- Layout ----------
@@ -130,8 +152,8 @@ function Nav() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <Link to="/" className="flex items-center gap-3">
           <div className="h-8 w-8 rounded-full bg-gradient-to-br from-red-600 via-white to-blue-700 ring-2 ring-offset-2 ring-offset-background" />
-          <span className="text-xl font-black tracking-tight">{brand.name}</span>
-          <span className="ml-2 rounded-md border px-1.5 py-0.5 text-xs font-semibold">{brand.ticker}</span>
+          <span className="text-xl font-black tracking-tight">USATether</span>
+          <span className="ml-2 rounded-md border px-1.5 py-0.5 text-xs font-semibold">USA₮</span>
         </Link>
         <div className="flex items-center gap-2">
           <Link to="/#invest" className="hidden md:block">
@@ -163,9 +185,9 @@ function Footer() {
         <div>
           <div className="flex items-center gap-2">
             <div className="h-6 w-6 rounded-full bg-gradient-to-br from-red-600 via-white to-blue-700" />
-            <span className="font-semibold">{brand.name}</span>
+            <span className="font-semibold">USATether</span>
           </div>
-          <p className="mt-3 text-sm text-muted-foreground">{brand.slogan} Not available in all jurisdictions.</p>
+          <p className="mt-3 text-sm text-muted-foreground">A stable way to move your money* Not available in all jurisdictions.</p>
         </div>
         <div className="text-sm">
           <p className="font-semibold">Company</p>
@@ -185,7 +207,7 @@ function Footer() {
         </div>
       </div>
       <div className="border-t py-6 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} {brand.name}. *Demo UI only. Returns are illustrative and not guaranteed.
+        © {new Date().getFullYear()} USATether. *Demo UI only. Returns are illustrative and not guaranteed.
       </div>
     </footer>
   );
@@ -212,10 +234,10 @@ function Hero() {
       <div className="grid items-center gap-8 md:grid-cols-2">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
           <h1 className="text-4xl font-black tracking-tight md:text-6xl">
-            Stable by Design. <span className="bg-gradient-to-r from-red-600 via-white to-blue-700 bg-clip-text text-transparent">Powered by {brand.ticker}</span>
+            Stable by Design. <span className="bg-gradient-to-r from-red-600 via-white to-blue-700 bg-clip-text text-transparent">Powered by USA₮</span>
           </h1>
           <p className="mt-4 text-lg text-muted-foreground max-w-prose">
-            Invest and purchase {brand.ticker} using your favorite crypto. Target monthly return: <span className="font-semibold">{brand.apr}%</span> (demo).
+            Invest and purchase USA₮ using your favorite crypto. Target monthly return: <span className="font-semibold">25%</span> (demo).
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button className="group" size="lg" onClick={() => navigate("/#invest")}>Start investing <ArrowRight className="ml-2 h-4 w-4 transition group-hover:translate-x-0.5"/></Button>
@@ -227,7 +249,7 @@ function Hero() {
           <Card className="relative overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><LineChart className="h-5 w-5"/> Growth Simulator</CardTitle>
-              <CardDescription>Assumes {brand.apr}% monthly compounding (demo)</CardDescription>
+              <CardDescription>Assumes 25% monthly compounding (demo)</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-56 w-full">
@@ -269,15 +291,9 @@ function TrustBar() {
 
 function Features() {
   const items = [
-    {
-      icon: <Wallet className="h-5 w-5" />, title: "Invest easily", desc: "Fund with BTC, ETH, USDT, USDC, SOL, or TRX in seconds.",
-    },
-    {
-      icon: <ShieldCheck className="h-5 w-5" />, title: "Security-first", desc: "2FA, hardware wallet support, and anti-phishing checks.",
-    },
-    {
-      icon: <BadgeDollarSign className="h-5 w-5" />, title: `${brand.apr}% / mo target`, desc: "Automated yield strategy – demo figures for UI showcase.",
-    },
+    { icon: <Wallet className="h-5 w-5" />, title: "Invest easily", desc: "Fund with BTC, ETH, USDT, USDC, SOL, or TRX in seconds." },
+    { icon: <ShieldCheck className="h-5 w-5" />, title: "Security-first", desc: "2FA, hardware wallet support, and anti-phishing checks." },
+    { icon: <BadgeDollarSign className="h-5 w-5" />, title: `25% / mo target`, desc: "Automated yield strategy – demo figures for UI showcase." },
   ];
   return (
     <section className="mx-auto mt-16 max-w-6xl px-4">
@@ -303,27 +319,25 @@ function Invest() {
   const [asset, setAsset] = useState("USDT");
   const [months, setMonths] = useState(6);
   const nav = useNavigate();
-  const projection = useMemo(() => amount * Math.pow(1 + brand.apr / 100, months), [amount, months]);
+  const projection = useMemo(() => amount * Math.pow(1 + 25 / 100, months), [amount, months]);
   return (
     <section id="invest" className="mx-auto mt-16 max-w-6xl px-4">
       <div className="mb-6 flex items-end justify-between">
-        <h2 className="text-2xl font-bold">Invest in {brand.ticker}</h2>
+        <h2 className="text-2xl font-bold">Invest in USA₮</h2>
         <Link to="/docs" className="text-sm text-muted-foreground hover:underline">How it works</Link>
       </div>
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><Coins className="h-5 w-5"/> Fund your position</CardTitle>
-            <CardDescription>Choose a crypto and amount to convert into {brand.ticker}.</CardDescription>
+            <CardDescription>Choose a crypto and amount to convert into USA₮.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid gap-4">
               <div>
                 <Label htmlFor="asset">Funding asset</Label>
                 <select id="asset" className="mt-2 w-full rounded-xl border bg-background p-2" value={asset} onChange={(e) => setAsset(e.target.value)}>
-                  {currencies.map((c) => (
-                    <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
-                  ))}
+                  {currencies.map((c) => (<option key={c.code} value={c.code}>{c.code} – {c.name}</option>))}
                 </select>
               </div>
               <div>
@@ -337,10 +351,10 @@ function Invest() {
               </div>
               <div className="rounded-xl bg-muted p-3 text-sm">
                 <div className="flex items-center justify-between"><span>Projected value</span><span className="font-semibold">${projection.toFixed(2)}</span></div>
-                <div className="mt-1 text-xs text-muted-foreground">Assumes {brand.apr}% monthly compounding. Demo only.</div>
+                <div className="mt-1 text-xs text-muted-foreground">Assumes 25% monthly compounding. Demo only.</div>
               </div>
               <div className="flex gap-3">
-                <Button className="gap-2"><CreditCard className="h-4 w-4"/> Buy {brand.ticker}</Button>
+                <Button className="gap-2"><CreditCard className="h-4 w-4"/> Buy USA₮</Button>
                 <Button variant="outline" className="gap-2" onClick={() => nav("/login")}>Create account <ChevronRight className="h-4 w-4"/></Button>
               </div>
             </div>
@@ -354,10 +368,7 @@ function Invest() {
           <CardContent>
             <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={Array.from({ length: months + 1 }).map((_, i) => ({
-                  m: i,
-                  v: amount * Math.pow(1 + brand.apr / 100, i),
-                }))}>
+                <AreaChart data={Array.from({ length: months + 1 }).map((_, i) => ({ m: i, v: amount * Math.pow(1 + 25 / 100, i) }))}>
                   <defs>
                     <linearGradient id="fillArea" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#ef4444" stopOpacity={0.6} />
@@ -386,7 +397,7 @@ function CTA() {
         <div className={clsx("absolute inset-0 -z-10 opacity-70", gradientBg)} />
         <CardHeader className="md:flex md:items-center md:justify-between">
           <div>
-            <CardTitle className="text-2xl">Ready to try {brand.name}?</CardTitle>
+            <CardTitle className="text-2xl">Ready to try USATether?</CardTitle>
             <CardDescription>Open your account in minutes and fund with your preferred crypto.</CardDescription>
           </div>
           <div className="mt-4 md:mt-0">
@@ -398,46 +409,44 @@ function CTA() {
   );
 }
 
-// ---------- Auth Pages ----------
+// ---------- Auth Pages (magic-link) ----------
 function Login() {
-  const { login } = useAuthContext();
-  const nav = useNavigate();
+  const { requestLoginLink } = useAuthContext();
   const [email, setEmail] = useState("");
-  const [pwd, setPwd] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+
   const onSubmit = async (e) => {
     e.preventDefault();
     setError("");
-    setLoading(true);
     try {
-      await login(email, pwd);
-      nav("/dashboard");
+      await requestLoginLink(email);
+      setSent(true);
     } catch (err) {
       setError(err?.message || 'Auth error');
-    } finally {
-      setLoading(false);
     }
   };
+
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
       <Card>
         <CardHeader>
           <CardTitle>Sign in</CardTitle>
-          <CardDescription>Access your {brand.name} account.</CardDescription>
+          <CardDescription>Enter your email to receive a magic link.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="grid gap-4">
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2"/>
-            </div>
-            <div>
-              <Label htmlFor="pwd">Password</Label>
-              <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
-            </div>
-            <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Continue</Button>{error && <p className="text-red-600 text-sm mt-2">{error}</p>}
-          </form>
+          {sent ? (
+            <p className="text-sm">Magic-link отправлен на <b>{email}</b>. Проверь почту и перейди по ссылке.</p>
+          ) : (
+            <form onSubmit={onSubmit} className="grid gap-4">
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2"/>
+              </div>
+              <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Send magic link</Button>
+              {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
+            </form>
+          )}
         </CardContent>
       </Card>
       <p className="mt-4 text-center text-sm text-muted-foreground">No account? <Link to="/signup" className="underline">Create one</Link></p>
@@ -446,49 +455,8 @@ function Login() {
 }
 
 function Signup() {
-  const { signup } = useAuthContext();
-  const nav = useNavigate();
-  const [email, setEmail] = useState("");
-  const [pwd, setPwd] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setLoading(true);
-    try {
-      await signup(email, pwd);
-      nav("/dashboard");
-    } catch (err) {
-      setError(err?.message || 'Sign up error');
-    } finally {
-      setLoading(false);
-    }
-  };
-  return (
-    <div className="mx-auto mt-16 max-w-md px-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Create account</CardTitle>
-          <CardDescription>Join {brand.name} in a minute.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={onSubmit} className="grid gap-4">
-            <div>
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2"/>
-            </div>
-            <div>
-              <Label htmlFor="pwd">Password</Label>
-              <Input id="pwd" type="password" required value={pwd} onChange={(e) => setPwd(e.target.value)} className="mt-2"/>
-            </div>
-            <Button type="submit" className="gap-2"><Lock className="h-4 w-4"/> Create account</Button>{error && <p className="text-red-600 text-sm mt-2">{error}</p>}
-          </form>
-        </CardContent>
-      </Card>
-      <p className="mt-4 text-center text-sm text-muted-foreground">Already have an account? <Link to="/login" className="underline">Sign in</Link></p>
-    </div>
-  );
+  // та же форма, что и Login — первая ссылка создаст юзера при verify
+  return <Login />;
 }
 
 // ---------- Dashboard ----------
@@ -498,7 +466,6 @@ function Dashboard() {
   const [buyAmt, setBuyAmt] = useState(200);
   const [sel, setSel] = useState("USDT");
 
-  // Simple fake daily growth for demo
   useEffect(() => {
     const id = setInterval(() => setBal((b) => Number((b * 1.0005).toFixed(2))), 2000);
     return () => clearInterval(id);
@@ -513,7 +480,7 @@ function Dashboard() {
   return (
     <div className="mx-auto max-w-6xl px-4">
       <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Welcome, {user?.name}</h1>
+        <h1 className="text-2xl font-bold">Welcome, {user?.email}</h1>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="gap-2" onClick={logout}><LogOut className="h-4 w-4"/> Sign out</Button>
         </div>
@@ -548,23 +515,21 @@ function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><CreditCard className="h-5 w-5"/> Quick Buy</CardTitle>
-            <CardDescription>Convert crypto to {brand.ticker}.</CardDescription>
+            <CardDescription>Convert crypto to USA₮.</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             <div>
               <Label htmlFor="sel">Asset</Label>
               <select id="sel" className="mt-2 w-full rounded-xl border bg-background p-2" value={sel} onChange={(e) => setSel(e.target.value)}>
-                {currencies.map((c) => (
-                  <option key={c.code} value={c.code}>{c.code} – {c.name}</option>
-                ))}
+                {currencies.map((c) => (<option key={c.code} value={c.code}>{c.code} – {c.name}</option>))}
               </select>
             </div>
             <div>
               <Label htmlFor="buy">Amount (USD)</Label>
               <Input id="buy" type="number" min={10} step={10} value={buyAmt} onChange={(e) => setBuyAmt(Number(e.target.value))} className="mt-2"/>
             </div>
-            <Button className="gap-2">Buy {brand.ticker} <ChevronRight className="h-4 w-4"/></Button>
-            <p className="text-xs text-muted-foreground">Network fees may apply. Demo only.</p>
+            <Button className="gap-2">Buy USA₮ <ChevronRight className="h-4 w-4"/></Button>
+            <p className="text-xs text-muted-foreground">This is a static UI. Connect real APIs to enable transfers.</p>
           </CardContent>
         </Card>
       </div>
@@ -630,7 +595,7 @@ function Docs() {
       <p className="mt-4 text-muted-foreground">This SPA is static and suitable for premium shared hosting (e.g., Netlify, Vercel, GitHub Pages). To enable live investments and real auth, integrate APIs/wallets (e.g., WalletConnect, Coinbase Onramp) and a backend later if required.</p>
       <ul className="mt-6 list-inside list-disc space-y-2 text-sm">
         <li>Client routing via <code>HashRouter</code> (no server rewrites needed).</li>
-        <li>Mock auth stored in <code>localStorage</code> – replace with OAuth/JWT when ready.</li>
+        <li>Auth via email magic-link and JWT.</li>
         <li>UI components: shadcn/ui, lucide-react, Tailwind, Framer Motion, Recharts.</li>
         <li>Accessible, responsive layout with dark mode.</li>
       </ul>
