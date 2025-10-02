@@ -1,26 +1,33 @@
-import { Resend } from 'resend'
+import nodemailer from "nodemailer";
 
-const resendKey = process.env.RESEND_API_KEY
-export const PROJECT_EMAIL = process.env.PROJECT_EMAIL || 'info@usatether.io'
-export const RESEND_FROM = process.env.RESEND_FROM || `USATether <${PROJECT_EMAIL}>`
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-let resend = null
-if (resendKey) {
-  resend = new Resend(resendKey)
-}
+  const { to, subject, text } = req.body;
 
-export async function sendMail({ to, subject, text, html }){
-  if (!resend) return { skipped: true, reason: 'No RESEND_API_KEY' }
   try {
-    const r = await resend.emails.send({
-      from: RESEND_FROM,
-      to: Array.isArray(to) ? to : [to],
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: true, // так как 465 = SSL
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to,
       subject,
-      text: text || '',
-      html: html || `<p>${(text||'').replace(/\n/g,'<br/>')}</p>`
-    })
-    return { ok: true, id: r?.data?.id || null }
-  } catch (e){
-    return { ok: false, error: e?.message || String(e) }
+      text,
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Mailer error:", error);
+    res.status(500).json({ error: "Email send failed" });
   }
 }
