@@ -1,64 +1,148 @@
-import { useEffect, useState } from 'react'
-import AuthWidget from '@/components/ui/AuthWidget.jsx'
-import DepositForm from '@/components/ui/DepositForm.jsx'
-import Dashboard from '@/components/ui/Dashboard.jsx'
+import { useEffect, useState } from 'react';
 
-export default function Cabinet(){
-  const [user, setUser] = useState(null)
-  const [token, setToken] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [working, setWorking] = useState(false)
+// Мини-обёртки для запросов с JWT из localStorage
+function authHeader() {
+  const t = localStorage.getItem('jwt') || '';
+  return t ? { Authorization: `Bearer ${t}` } : {};
+}
+async function apiGet(path) {
+  const r = await fetch(path, { headers: { 'Content-Type': 'application/json', ...authHeader() } });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function apiPost(path, body) {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+export default function Cabinet() {
+  const [me, setMe] = useState(null);
+  const [balance, setBalance] = useState(0);
+  const [deps, setDeps] = useState([]);
+  const [wds, setWds] = useState([]);
+  const [amount, setAmount] = useState('');
+  const [err, setErr] = useState('');
+
+  async function loadAll() {
+    setErr('');
+    try {
+      const [m, b, d, w] = await Promise.all([
+        apiGet('/api/me'),
+        apiGet('/api/balance'),
+        apiGet('/api/deposits'),
+        apiGet('/api/withdrawals'),
+      ]);
+      setMe(m);
+      setBalance(b.balance_usat || 0);
+      setDeps(d);
+      setWds(w);
+    } catch (e) {
+      setErr(e.message || 'error');
+    }
+  }
 
   useEffect(() => {
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        setUser(session.user)
-        setToken(session.access_token)
-      }
-      setLoading(false)
-    })()
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser(session.user)
-        setToken(session.access_token)
-      } else {
-        setUser(null)
-        setToken('')
-      }
-    })
-    return () => subscription.unsubscribe()
-  }, [])
+    loadAll();
+  }, []);
 
-  async function handleAuth(u, t){
-    setUser(u)
-    setToken(t)
+  async function makeDeposit(e) {
+    e.preventDefault();
+    setErr('');
+    try {
+      if (!amount) return;
+      await apiPost('/api/deposits', { amount_usat: Number(amount) });
+      setAmount('');
+      await loadAll();
+    } catch (e) {
+      setErr(e.message || 'deposit_error');
+    }
   }
 
-  async function submitDeposit(amount){
-    setWorking(true)
-    await fetch('/api/deposits', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-      body: JSON.stringify({ amount })
-    }).then(r=>r.json()).catch(()=>{})
-    setWorking(false)
+  async function makeWithdraw(e) {
+    e.preventDefault();
+    setErr('');
+    try {
+      if (!amount) return;
+      await apiPost('/api/withdrawals', { amount_usat: Number(amount) });
+      setAmount('');
+      await loadAll();
+    } catch (e) {
+      setErr(e.message || 'withdraw_error');
+    }
   }
 
-  if (loading) return <div className="p-6">Загрузка…</div>
-  if (!user) return <AuthWidget onAuth={handleAuth} />
+  // Если юзер не залогинен (нет JWT или /api/me вернул 401) — показываем заглушку
+  if (!localStorage.getItem('jwt')) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-bold mb-2">Требуется вход</h1>
+        <p>Войдите по email (получите ссылку) и повторите.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="max-w-2xl mx-auto rounded-2xl border p-6">
-        <h2 className="text-xl font-semibold mb-2">Пополнение баланса</h2>
-        <DepositForm onSubmit={submitDeposit} loading={working} />
-        <p className="text-xs mt-4 opacity-70">После пополнения баланс и история обновятся ниже.</p>
+      <h1 className="text-2xl font-bold">Кабинет</h1>
+
+      {err && <div className="text-red-600">Ошибка: {String(err)}</div>}
+
+      <div className="p-4 border rounded-xl">
+        <div className="mb-2">Пользователь: <b>{me?.email || '—'}</b></div>
+        <div>Баланс: <b>{balance}</b> USAT</div>
       </div>
-      <Dashboard token={token} />
-      <footer className="text-center text-xs opacity-70 pt-8">
-        Связь: <a href="mailto:info@usatether.io" className="underline">info@usatether.io</a>
-      </footer>
+
+      <form className="p-4 border rounded-xl space-y-3" onSubmit={makeDeposit}>
+        <label className="block text-sm">Сумма (USAT)</label>
+        <input
+          className="border rounded-xl px-3 py-2 w-full"
+          type="number"
+          min="0"
+          step="0.000001"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="100"
+        />
+        <div className="flex gap-3">
+          <button className="border rounded-xl px-4 py-2" type="submit">Пополнить</button>
+          <button className="border rounded-xl px-4 py-2" type="button" onClick={makeWithdraw}>Вывести</button>
+        </div>
+      </form>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="p-4 border rounded-xl">
+          <h2 className="font-semibold mb-2">Депозиты</h2>
+          <ul className="space-y-1">
+            {deps.map((r) => (
+              <li key={r.id} className="text-sm flex justify-between">
+                <span>{new Date(r.created_at).toLocaleString()}</span>
+                <span>{r.amount_usat} USAT</span>
+              </li>
+            ))}
+            {!deps.length && <li className="text-sm text-gray-500">Пусто</li>}
+          </ul>
+        </div>
+
+        <div className="p-4 border rounded-xl">
+          <h2 className="font-semibold mb-2">Выводы</h2>
+          <ul className="space-y-1">
+            {wds.map((r) => (
+              <li key={r.id} className="text-sm flex justify-between">
+                <span>{new Date(r.created_at).toLocaleString()}</span>
+                <span>-{r.amount_usat} USAT</span>
+              </li>
+            ))}
+            {!wds.length && <li className="text-sm text-gray-500">Пусто</li>}
+          </ul>
+        </div>
+      </div>
     </div>
-  )
+  );
 }
