@@ -1,5 +1,3 @@
-import { getBearer, verifySupabaseJWT, ensureUserWithWelcome, supabaseAdmin } from './_helpers'
-
 // Compounding every 5 seconds to match 25%/month
 const MONTHLY_RATE = 0.25
 const SECONDS_IN_MONTH = 30 * 24 * 60 * 60
