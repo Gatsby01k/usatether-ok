@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { supabase } from '../lib/supabaseClient'
 import AuthWidget from '@/components/ui/AuthWidget.jsx'
 import DepositForm from '@/components/ui/DepositForm.jsx'
 import Dashboard from '@/components/ui/Dashboard.jsx'
