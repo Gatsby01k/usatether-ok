@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 
-export default function AuthWidget({ onAuth }) {
-  // режимы: 'signin' | 'signup' | 'setpass' (по ссылке из письма)
+export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetToken = '' }) {
+  // режимы: 'auth' (signin/signup) | 'setpass' (по ссылке из письма)
   const [tab, setTab] = useState('signin');
-  const [mode, setMode] = useState('auth'); // 'auth' | 'setpass'
+  const [mode, setMode] = useState(initialMode);
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
   const [newPass, setNewPass] = useState('');
   const [newPass2, setNewPass2] = useState('');
-  const [resetToken, setResetToken] = useState('');
+  const [resetToken, setResetToken] = useState(initialResetToken);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,34 +21,13 @@ export default function AuthWidget({ onAuth }) {
   const [showNew1, setShowNew1] = useState(false);
   const [showNew2, setShowNew2] = useState(false);
 
-  useEffect(() => { setError(''); setInfo(''); }, [tab, mode]);
-
-  // если пришли по ссылке /#/login?reset=1&token=...
+  // если Login передал параметры — фиксируем их
   useEffect(() => {
-    const hash = window.location.hash || '';
-    const qIndex = hash.indexOf('?');
-    if (qIndex !== -1) {
-      const qs = hash.slice(qIndex + 1);
-      const sp = new URLSearchParams(qs);
-      if (sp.get('reset') === '1') {
-        const t = sp.get('token') || '';
-        if (t) {
-          setResetToken(t);
-          setMode('setpass');
-          setTab('signin'); // не принципиально
-          // чистим query из адреса
-          const baseHash = hash.split('?')[0];
-          window.history.replaceState({}, '', window.location.pathname + baseHash);
-        }
-      }
-      if (sp.get('verified') === '1') {
-        setTab('signin');
-        setInfo('Email verified. Please sign in.');
-        const baseHash = hash.split('?')[0];
-        window.history.replaceState({}, '', window.location.pathname + baseHash);
-      }
-    }
-  }, []);
+    if (initialMode === 'setpass') setMode('setpass');
+    if (initialResetToken) setResetToken(initialResetToken);
+  }, [initialMode, initialResetToken]);
+
+  useEffect(() => { setError(''); setInfo(''); }, [tab, mode]);
 
   async function post(path, body) {
     setBusy(true); setError('');
@@ -83,7 +62,7 @@ export default function AuthWidget({ onAuth }) {
       setTimeout(() => window.location.reload(), 0);
     } catch (e) {
       if (String(e.message).includes('email_not_verified')) {
-        setInfo('Account is not verified. We can resend the verification email from the sign up form.');
+        setInfo('Account is not verified. Check your inbox or resend from Sign up.');
       }
     }
   }
