@@ -435,26 +435,21 @@ function CTA() {
 function Login() {
   const { user, loading } = useAuthContext();
 
-  // пока грузим профиль — ничего не рендерим
   if (loading) return null;
+  if (user) return <Navigate to="/dashboard" replace />;
 
-  // если уже авторизован — сразу уводим в кабинет
-  if (user) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
-  // иначе показываем форму логина
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
       <AuthWidget
         onAuth={() => {
-          // после успешной верификации магик-линка
-          window.location.hash = '#/dashboard';
+          // сразу в кабинет, без мерцания /#/login и без лишнего reload
+          window.location.replace(`${window.location.origin}/#/dashboard`);
         }}
       />
     </div>
   );
 }
+
 
 function Signup() {
   // регистрация = тот же логин по magic-link, юзер создастся при verify
