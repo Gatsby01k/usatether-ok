@@ -6,10 +6,8 @@ const MAIL_FROM = process.env.MAIL_FROM || `USATether <${PROJECT_EMAIL}>`;
 
 function getResend() {
   if (!resend) {
-    // импортируем и создаём экземпляр только при реальной отправке
     const { Resend } = require('resend');
     const key = process.env.RESEND_API_KEY || '';
-    // сам по себе конструктор теперь не завалит импорт модуля, даже если ключ пустой
     resend = new Resend(key);
   }
   return resend;
@@ -24,7 +22,6 @@ function getResend() {
  * @param {string} [opts.html]
  */
 async function sendMail({ to, subject, text, html }) {
-  // Явно проверим конфиг — вернём понятную ошибку, а не упадём на импорте
   if (!process.env.RESEND_API_KEY) {
     const e = new Error('mail_config_missing');
     e.details = 'RESEND_API_KEY is not set';
