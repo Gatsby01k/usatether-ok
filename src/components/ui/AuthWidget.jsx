@@ -40,7 +40,11 @@ export default function AuthWidget({ onAuth }) {
         if (res.ok && data.token) {
           localStorage.setItem('jwt', data.token);
           stripTokenFromHash();
+          // опционально уведомим родителя
           if (typeof onAuth === 'function') onAuth(data.user, data.token);
+          // 🔥 ЖЁСТКИЙ РЕДИРЕКТ В КАБИНЕТ (решает застревание на /#/login)
+          window.location.replace(`${window.location.origin}/#/dashboard`);
+          return;
         } else {
           setError(data.error || 'verify_failed');
         }
