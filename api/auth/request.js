@@ -50,7 +50,7 @@ module.exports = async (req, res) => {
 
     // 3) magic link
     const baseURL = process.env.PUBLIC_BASE_URL || 'https://usatether.io';
-    const verifyURL = `${baseURL}/?token=${token}`;
+    const verifyURL = `${baseURL}/#/login?token=${token}`;
 
     // 4) send email via unified Resend
     const subject = 'Your USATether sign-in link';
