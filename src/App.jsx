@@ -442,12 +442,10 @@ function Login() {
 
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
-      <AuthWidget
-        onAuth={() => {
-          // сразу в кабинет, без мерцания /#/login и без лишнего reload
-          window.location.replace(`${window.location.origin}/#/dashboard`);
-        }}
-      />
+      <AuthWidget onAuth={() => {
+  window.location.replace(`${window.location.origin}/#/dashboard`);
+  setTimeout(() => window.location.reload(), 0);
+}} />
     </div>
   );
 }
