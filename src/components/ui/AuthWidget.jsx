@@ -1,15 +1,54 @@
 import { useEffect, useState } from 'react';
 
 export default function AuthWidget({ onAuth }) {
-  const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
+  // режимы: 'signin' | 'signup' | 'setpass' (по ссылке из письма)
+  const [tab, setTab] = useState('signin');
+  const [mode, setMode] = useState('auth'); // 'auth' | 'setpass'
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
+  const [newPass, setNewPass] = useState('');
+  const [newPass2, setNewPass2] = useState('');
+  const [resetToken, setResetToken] = useState('');
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
-  const [info, setInfo] = useState(''); // тексты типа "мы отправили письмо"
 
-  useEffect(() => { setError(''); setInfo(''); }, [tab]);
+  // видимость паролей
+  const [showSignPass, setShowSignPass] = useState(false);
+  const [showUpPass1, setShowUpPass1] = useState(false);
+  const [showUpPass2, setShowUpPass2] = useState(false);
+  const [showNew1, setShowNew1] = useState(false);
+  const [showNew2, setShowNew2] = useState(false);
+
+  useEffect(() => { setError(''); setInfo(''); }, [tab, mode]);
+
+  // если пришли по ссылке /#/login?reset=1&token=...
+  useEffect(() => {
+    const hash = window.location.hash || '';
+    const qIndex = hash.indexOf('?');
+    if (qIndex !== -1) {
+      const qs = hash.slice(qIndex + 1);
+      const sp = new URLSearchParams(qs);
+      if (sp.get('reset') === '1') {
+        const t = sp.get('token') || '';
+        if (t) {
+          setResetToken(t);
+          setMode('setpass');
+          setTab('signin'); // не принципиально
+          // чистим query из адреса
+          const baseHash = hash.split('?')[0];
+          window.history.replaceState({}, '', window.location.pathname + baseHash);
+        }
+      }
+      if (sp.get('verified') === '1') {
+        setTab('signin');
+        setInfo('Email verified. Please sign in.');
+        const baseHash = hash.split('?')[0];
+        window.history.replaceState({}, '', window.location.pathname + baseHash);
+      }
+    }
+  }, []);
 
   async function post(path, body) {
     setBusy(true); setError('');
@@ -44,7 +83,7 @@ export default function AuthWidget({ onAuth }) {
       setTimeout(() => window.location.reload(), 0);
     } catch (e) {
       if (String(e.message).includes('email_not_verified')) {
-        setInfo('Account is not verified. We can resend the verification email.');
+        setInfo('Account is not verified. We can resend the verification email from the sign up form.');
       }
     }
   }
@@ -58,75 +97,154 @@ export default function AuthWidget({ onAuth }) {
     setInfo(`We sent a verification link to ${email}. Please confirm your account.`);
   }
 
-  async function resend() {
+  async function requestReset() {
+    if (!email) { setError('enter_email_first'); return; }
     try {
-      await post('/api/auth/resend-verification', { email });
-      setInfo(`Verification email was resent to ${email}.`);
+      await post('/api/auth/reset-request', { email });
+      setInfo(`If this email exists, a reset link has been sent to ${email}.`);
     } catch {}
+  }
+
+  async function submitSetNew(e) {
+    e.preventDefault();
+    if (!resetToken) { setError('invalid_or_expired'); return; }
+    if (newPass !== newPass2) { setError('password_mismatch'); return; }
+    if (newPass.length < 8) { setError('weak_password'); return; }
+    const j = await post('/api/auth/reset-confirm', { token: resetToken, password: newPass });
+    if (j.token) localStorage.setItem('jwt', j.token);
+    if (typeof onAuth === 'function') onAuth(j.user, j.token);
+    const dash = `${window.location.origin}/#/dashboard`;
+    window.location.replace(dash);
+    setTimeout(() => window.location.reload(), 0);
   }
 
   return (
     <div className="rounded-2xl border p-6">
-      <h2 className="mb-4 text-2xl font-bold">Вход / Регистрация</h2>
+      <h2 className="mb-4 text-2xl font-bold">
+        {mode === 'setpass' ? 'Set a new password' : 'Вход / Регистрация'}
+      </h2>
 
-      <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl border">
-        <button
-          className={`p-2 text-sm ${tab==='signin' ? 'bg-foreground text-background' : ''}`}
-          onClick={() => setTab('signin')}
-        >Sign in</button>
-        <button
-          className={`p-2 text-sm ${tab==='signup' ? 'bg-foreground text-background' : ''}`}
-          onClick={() => setTab('signup')}
-        >Sign up</button>
-      </div>
+      {mode === 'auth' && (
+        <>
+          <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl border">
+            <button
+              className={`p-2 text-sm ${tab==='signin' ? 'bg-foreground text-background' : ''}`}
+              onClick={() => setTab('signin')}
+            >Sign in</button>
+            <button
+              className={`p-2 text-sm ${tab==='signup' ? 'bg-foreground text-background' : ''}`}
+              onClick={() => setTab('signup')}
+            >Sign up</button>
+          </div>
 
-      {info && (
-        <div className="mb-3 rounded-xl border p-3 text-sm">
-          {info} {info.includes('not verified') && (
-            <button className="underline ml-2" onClick={resend} disabled={busy}>Resend</button>
+          {info && <div className="mb-3 rounded-xl border p-3 text-sm">{info}</div>}
+
+          {tab === 'signin' ? (
+            <form onSubmit={submitSignin} className="space-y-3">
+              <input
+                className="w-full rounded-xl border p-3"
+                placeholder="you@example.com"
+                type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
+              />
+              <div className="relative">
+                <input
+                  className="w-full rounded-xl border p-3 pr-20"
+                  placeholder="Password"
+                  type={showSignPass ? 'text' : 'password'}
+                  value={pass} onChange={(e)=>setPass(e.target.value)} required
+                />
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-sm underline"
+                  onClick={()=>setShowSignPass(v=>!v)}
+                >
+                  {showSignPass ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <div className="flex items-center justify-between">
+                <button disabled={busy} className="rounded-xl border px-4 py-2" type="submit">
+                  {busy ? 'Signing in…' : 'Sign in'}
+                </button>
+                <button type="button" className="text-sm underline" onClick={requestReset}>
+                  Forgot password?
+                </button>
+              </div>
+              {error && <p className="text-red-600 text-sm">{error}</p>}
+            </form>
+          ) : (
+            <form onSubmit={submitSignup} className="space-y-3">
+              <input
+                className="w-full rounded-xl border p-3"
+                placeholder="you@example.com"
+                type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
+              />
+              <div className="relative">
+                <input
+                  className="w-full rounded-xl border p-3 pr-20"
+                  placeholder="Password (min 8)"
+                  type={showUpPass1 ? 'text' : 'password'}
+                  value={pass} onChange={(e)=>setPass(e.target.value)} required
+                />
+                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-sm underline"
+                        onClick={()=>setShowUpPass1(v=>!v)}>
+                  {showUpPass1 ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  className="w-full rounded-xl border p-3 pr-20"
+                  placeholder="Repeat password"
+                  type={showUpPass2 ? 'text' : 'password'}
+                  value={pass2} onChange={(e)=>setPass2(e.target.value)} required
+                />
+                <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-sm underline"
+                        onClick={()=>setShowUpPass2(v=>!v)}>
+                  {showUpPass2 ? 'Hide' : 'Show'}
+                </button>
+              </div>
+              <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
+                {busy ? 'Sending verification…' : 'Create account'}
+              </button>
+              {error && <p className="text-red-600 text-sm">{error}</p>}
+            </form>
           )}
-        </div>
+        </>
       )}
 
-      {tab === 'signin' ? (
-        <form onSubmit={submitSignin} className="space-y-3">
-          <input
-            className="w-full rounded-xl border p-3"
-            placeholder="you@example.com"
-            type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
-          />
-          <input
-            className="w-full rounded-xl border p-3"
-            placeholder="Password"
-            type="password" value={pass} onChange={(e)=>setPass(e.target.value)} required
-          />
-          <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-        </form>
-      ) : (
-        <form onSubmit={submitSignup} className="space-y-3">
-          <input
-            className="w-full rounded-xl border p-3"
-            placeholder="you@example.com"
-            type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
-          />
-          <input
-            className="w-full rounded-xl border p-3"
-            placeholder="Password (min 8)"
-            type="password" value={pass} onChange={(e)=>setPass(e.target.value)} required
-          />
-          <input
-            className="w-full rounded-xl border p-3"
-            placeholder="Repeat password"
-            type="password" value={pass2} onChange={(e)=>setPass2(e.target.value)} required
-          />
-          <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
-            {busy ? 'Sending verification…' : 'Create account'}
-          </button>
-          {error && <p className="text-red-600 text-sm">{error}</p>}
-        </form>
+      {mode === 'setpass' && (
+        <>
+          {info && <div className="mb-3 rounded-xl border p-3 text-sm">{info}</div>}
+          <form onSubmit={submitSetNew} className="space-y-3">
+            <div className="relative">
+              <input
+                className="w-full rounded-xl border p-3 pr-20"
+                placeholder="New password (min 8)"
+                type={showNew1 ? 'text' : 'password'}
+                value={newPass} onChange={(e)=>setNewPass(e.target.value)} required
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-sm underline"
+                      onClick={()=>setShowNew1(v=>!v)}>
+                {showNew1 ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <div className="relative">
+              <input
+                className="w-full rounded-xl border p-3 pr-20"
+                placeholder="Repeat new password"
+                type={showNew2 ? 'text' : 'password'}
+                value={newPass2} onChange={(e)=>setNewPass2(e.target.value)} required
+              />
+              <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 text-sm underline"
+                      onClick={()=>setShowNew2(v=>!v)}>
+                {showNew2 ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
+              {busy ? 'Saving…' : 'Set new password'}
+            </button>
+            {error && <p className="text-red-600 text-sm">{error}</p>}
+          </form>
+        </>
       )}
 
       <p className="text-xs mt-4 opacity-70">
