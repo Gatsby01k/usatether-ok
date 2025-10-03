@@ -627,6 +627,8 @@ export default function App() {
             <Route path="/docs" element={<Docs />} />
             <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
             <Route path="*" element={<NotFound />} />
+            <Route path="/forgot" element={<Forgot />} />
+            <Route path="/reset" element={<Reset />} />
           </Routes>
           <Footer />
         </Router>
