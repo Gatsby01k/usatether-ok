@@ -1,33 +1,21 @@
-import nodemailer from "nodemailer";
+import { Resend } from 'resend';
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+const resend = new Resend(process.env.RESEND_API_KEY);
+export const PROJECT_EMAIL = process.env.PROJECT_EMAIL || 'info@usatether.io';
 
-  const { to, subject, text } = req.body;
-
+export async function sendMail({ to, subject, text, html }) {
   try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: process.env.SMTP_PORT,
-      secure: true, // так как 465 = SSL
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM,
+    const res = await resend.emails.send({
+      from: process.env.MAIL_FROM || `USATether <info@usatether.io>`,
       to,
       subject,
       text,
+      html: html || `<p>${text}</p>`
     });
-
-    res.status(200).json({ success: true });
-  } catch (error) {
-    console.error("Mailer error:", error);
-    res.status(500).json({ error: "Email send failed" });
+    console.log('Resend response:', res);
+    return res;
+  } catch (err) {
+    console.error('Resend error:', err);
+    throw err;
   }
 }
