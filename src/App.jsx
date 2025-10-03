@@ -446,15 +446,40 @@ function CTA() {
 function Login() {
   const { user, loading } = useAuthContext();
 
+  // достанем reset-token из hash
+  const [resetToken, setResetToken] = React.useState('');
+  React.useEffect(() => {
+    const h = window.location.hash || '';
+    const i = h.indexOf('?');
+    if (i !== -1) {
+      const sp = new URLSearchParams(h.slice(i + 1));
+      const isReset = sp.get('reset') === '1';
+      const tok = sp.get('token') || '';
+      if (isReset && tok) {
+        setResetToken(tok); // не редиректим, показываем форму смены пароля
+        return;
+      }
+    }
+  }, []);
+
   if (loading) return null;
-  if (user) return <Navigate to="/dashboard" replace />;
+
+  // ⚠️ если есть resetToken — НЕ уводим в кабинет, а показываем форму смены пароля
+  if (!resetToken && user) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
-      <AuthWidget onAuth={() => {
-  window.location.replace(`${window.location.origin}/#/dashboard`);
-  setTimeout(() => window.location.reload(), 0);
-}} />
+      <AuthWidget
+        // если пришли по ссылке из письма — сразу открываем режим "setpass"
+        initialMode={resetToken ? 'setpass' : 'auth'}
+        initialResetToken={resetToken}
+        onAuth={() => {
+          window.location.replace(`${window.location.origin}/#/dashboard`);
+          setTimeout(() => window.location.reload(), 0);
+        }}
+      />
     </div>
   );
 }
