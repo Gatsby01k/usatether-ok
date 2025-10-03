@@ -7,57 +7,62 @@ export default function AuthWidget({ onAuth }) {
   const [pass2, setPass2] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState(''); // тексты типа "мы отправили письмо"
 
-  useEffect(() => { setError(''); }, [tab]);
+  useEffect(() => { setError(''); setInfo(''); }, [tab]);
 
-  async function call(path, body) {
-  setBusy(true);
-  setError('');
-  try {
-    const r = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      credentials: 'include',                      // важно: чтобы cookie jwt устанавливалась
-    });
-
-    const raw = await r.text();                    // читаем как текст (бывает пусто/не-JSON)
-    let j = {};
-    try { j = JSON.parse(raw); } catch {}
-
-    if (!r.ok) {
-      throw new Error(j.error || raw || `http_${r.status}`);
+  async function post(path, body) {
+    setBusy(true); setError('');
+    try {
+      const r = await fetch(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        credentials: 'include',
+      });
+      const raw = await r.text();
+      let j = {};
+      try { j = JSON.parse(raw); } catch {}
+      if (!r.ok) throw new Error(j.error || raw || `http_${r.status}`);
+      return j;
+    } catch (e) {
+      setError(String(e.message || 'request_failed'));
+      throw e;
+    } finally {
+      setBusy(false);
     }
-
-    // совместимость: если API вернул token — положим в localStorage
-    if (j.token) localStorage.setItem('jwt', j.token);
-    if (typeof onAuth === 'function') onAuth(j.user, j.token);
-
-    // 🔥 мгновенно в кабинет и тут же полный reload,
-    // чтобы контекст useAuth подтянул профиль и кнопка стала "Dashboard"
-    const dash = `${window.location.origin}/#/dashboard`;
-    window.location.replace(dash);
-    // следующая строка гарантирует, что контекст авторизации поднимется заново
-    setTimeout(() => window.location.reload(), 0);
-    return;
-  } catch (e) {
-    setError(String(e.message || 'request_failed'));
-  } finally {
-    setBusy(false);
   }
-}
 
-
-  function submitSignin(e) {
+  async function submitSignin(e) {
     e.preventDefault();
-    call('/api/auth/login', { email, password: pass });
+    try {
+      const j = await post('/api/auth/login', { email, password: pass });
+      if (j.token) localStorage.setItem('jwt', j.token);
+      if (typeof onAuth === 'function') onAuth(j.user, j.token);
+      const dash = `${window.location.origin}/#/dashboard`;
+      window.location.replace(dash);
+      setTimeout(() => window.location.reload(), 0);
+    } catch (e) {
+      if (String(e.message).includes('email_not_verified')) {
+        setInfo('Account is not verified. We can resend the verification email.');
+      }
+    }
   }
 
-  function submitSignup(e) {
+  async function submitSignup(e) {
     e.preventDefault();
     if (pass !== pass2) { setError('password_mismatch'); return; }
     if (pass.length < 8) { setError('weak_password'); return; }
-    call('/api/auth/register', { email, password: pass });
+    await post('/api/auth/register', { email, password: pass });
+    setTab('signin');
+    setInfo(`We sent a verification link to ${email}. Please confirm your account.`);
+  }
+
+  async function resend() {
+    try {
+      await post('/api/auth/resend-verification', { email });
+      setInfo(`Verification email was resent to ${email}.`);
+    } catch {}
   }
 
   return (
@@ -74,6 +79,14 @@ export default function AuthWidget({ onAuth }) {
           onClick={() => setTab('signup')}
         >Sign up</button>
       </div>
+
+      {info && (
+        <div className="mb-3 rounded-xl border p-3 text-sm">
+          {info} {info.includes('not verified') && (
+            <button className="underline ml-2" onClick={resend} disabled={busy}>Resend</button>
+          )}
+        </div>
+      )}
 
       {tab === 'signin' ? (
         <form onSubmit={submitSignin} className="space-y-3">
@@ -110,7 +123,7 @@ export default function AuthWidget({ onAuth }) {
             type="password" value={pass2} onChange={(e)=>setPass2(e.target.value)} required
           />
           <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
-            {busy ? 'Creating…' : 'Create account'}
+            {busy ? 'Sending verification…' : 'Create account'}
           </button>
           {error && <p className="text-red-600 text-sm">{error}</p>}
         </form>
