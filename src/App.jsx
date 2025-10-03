@@ -433,12 +433,22 @@ function CTA() {
 
 // ---------- Auth Pages (magic-link) ----------
 function Login() {
+  const { user, loading } = useAuthContext();
+
+  // пока грузим профиль — ничего не рендерим
+  if (loading) return null;
+
+  // если уже авторизован — сразу уводим в кабинет
+  if (user) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  // иначе показываем форму логина
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
       <AuthWidget
-        onAuth={(user, token) => {
-          // после подтверждения ссылки сохраняется JWT внутри виджета;
-          // здесь просто уводим в кабинет/дашборд
+        onAuth={() => {
+          // после успешной верификации магик-линка
           window.location.hash = '#/dashboard';
         }}
       />
