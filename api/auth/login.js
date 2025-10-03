@@ -27,6 +27,7 @@ module.exports = async (req, res) => {
       [em]
     );
     const user = r.rows[0];
+
     if (!user || !user.password_hash) {
       return res.status(400).json({ error: 'invalid_credentials' });
     }
