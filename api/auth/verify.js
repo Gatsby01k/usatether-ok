@@ -4,9 +4,10 @@ const jwt = require('jsonwebtoken');
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: { rejectUnauthorized: false },
 });
 
+// аккуратно читаем token как из req.query, так и из сырого URL
 function getQueryToken(req) {
   try {
     const t1 = req?.query?.token;
@@ -28,38 +29,41 @@ module.exports = async (req, res) => {
     const token = getQueryToken(req);
     if (!token) return res.status(400).json({ error: 'token_required' });
 
-    // ищем запись по токену
-    const r = await pool.query(
-      `SELECT ac.id, ac.expires_at, ac.created_at, u.id AS user_id, u.email, NOW() AS now_utc
-       FROM auth_codes ac
-       JOIN users u ON u.id = ac.user_id
-       WHERE ac.token = $1
-       ORDER BY ac.created_at DESC
-       LIMIT 1`,
-      [token]
-    );
+    // АТОМАРНО: удаляем ровно одну запись с валидным токеном и ещё не истёкшим сроком,
+    // сразу получаем user_id/email через JOIN.
+    const q = `
+      WITH deleted AS (
+        DELETE FROM auth_codes
+        WHERE token = $1 AND expires_at > now()
+        RETURNING user_id
+      )
+      SELECT u.id AS user_id, u.email
+      FROM deleted d
+      JOIN users u ON u.id = d.user_id
+      LIMIT 1
+    `;
+    const r = await pool.query(q, [token]);
     const row = r.rows[0];
+
     if (!row) {
-      console.log('verify: token_not_found', token.slice(0, 8));
+      // либо токен не найден, либо уже истёк/использован → одно сообщение
       return res.status(400).json({ error: 'invalid_or_expired' });
     }
 
-    // проверка срока
-    if (row.expires_at <= row.now_utc) {
-      console.log('verify: token_expired', token.slice(0, 8));
-      await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
-      return res.status(400).json({ error: 'invalid_or_expired' });
-    }
-
-    // одноразовый
-    await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
-
-    // выдаём JWT
+    // JWT на 7 дней
     const jwtToken = jwt.sign(
       { sub: row.user_id, email: row.email },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
+
+    // (опционально) Параллельно кладём JWT в HttpOnly cookie — безопаснее, чем localStorage.
+    // Оставляем и JSON, чтобы фронт не ломать.
+    try {
+      res.setHeader('Set-Cookie', [
+        `jwt=${jwtToken}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax`,
+      ]);
+    } catch {}
 
     return res.json({ token: jwtToken, user: { id: row.user_id, email: row.email } });
   } catch (e) {
