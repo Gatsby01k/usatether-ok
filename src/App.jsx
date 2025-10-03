@@ -94,15 +94,17 @@ useEffect(() => {
     if (!token) return;
     try {
       const r = await fetch(`/api/auth/verify?token=${token}`);
-      const data = await r.json();
+      const data = await r.json().catch(() => ({}));
       if (r.ok && data.token) {
         localStorage.setItem('jwt', data.token);
         stripTokenFromHash();
-        if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
-          window.location.hash = '#/dashboard';
-        }
+        // ВАЖНО: редиректим ВСЕГДА, даже если пришли на #/login
+        window.location.hash = '#/dashboard';
       }
-    } catch {}
+      // если не ок — ничего не делаем: виджет на /login покажет ошибку
+    } catch {
+      // ignore
+    }
   })();
 }, []);
 
