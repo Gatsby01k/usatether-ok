@@ -11,17 +11,17 @@ export default function AuthWidget({ onAuth }) {
   useEffect(() => { setError(''); }, [tab]);
 
   async function call(path, body) {
-  setBusy(true); 
+  setBusy(true);
   setError('');
   try {
     const r = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      credentials: 'include',            // <-- берём/ставим cookie во всех случаях
+      credentials: 'include',                      // важно: чтобы cookie jwt устанавливалась
     });
 
-    const raw = await r.text();          // читаем как текст, чтобы не падать на пустом ответе
+    const raw = await r.text();                    // читаем как текст (бывает пусто/не-JSON)
     let j = {};
     try { j = JSON.parse(raw); } catch {}
 
@@ -29,13 +29,16 @@ export default function AuthWidget({ onAuth }) {
       throw new Error(j.error || raw || `http_${r.status}`);
     }
 
-    // совместимость со старым фронтом
+    // совместимость: если API вернул token — положим в localStorage
     if (j.token) localStorage.setItem('jwt', j.token);
     if (typeof onAuth === 'function') onAuth(j.user, j.token);
 
-    // 🔥 жёсткий и мгновенный редирект — исключаем залипание на /#/login
+    // 🔥 мгновенно в кабинет и тут же полный reload,
+    // чтобы контекст useAuth подтянул профиль и кнопка стала "Dashboard"
     const dash = `${window.location.origin}/#/dashboard`;
-    setTimeout(() => { window.location.replace(dash); }, 0);
+    window.location.replace(dash);
+    // следующая строка гарантирует, что контекст авторизации поднимется заново
+    setTimeout(() => window.location.reload(), 0);
     return;
   } catch (e) {
     setError(String(e.message || 'request_failed'));
