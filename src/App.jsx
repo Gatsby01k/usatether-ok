@@ -71,6 +71,13 @@ function useAuth() {
 
   // 1) Если пришли по magic-link (?token=...), подтвердить и сохранить jwt
 useEffect(() => {
+  function hasResetInHash() {
+    const h = window.location.hash || '';
+    const i = h.indexOf('?');
+    if (i === -1) return false;
+    const sp = new URLSearchParams(h.slice(i + 1));
+    return sp.get('reset') === '1';
+  }
   function getTokenFromUrl() {
     const sp = new URLSearchParams(window.location.search);
     const t1 = sp.get('token');
@@ -90,25 +97,27 @@ useEffect(() => {
   }
 
   (async () => {
+    // 🚫 если это ссылка на reset — ничего тут не делаем (пусть обработает форма)
+    if (hasResetInHash()) return;
+
     const token = getTokenFromUrl();
     if (!token) return;
     try {
       const r = await fetch(`/api/auth/verify?token=${token}`);
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.token) {
-        // Сохраняем JWT и СРАЗУ помечаем пользователя залогиненным
         localStorage.setItem('jwt', data.token);
         stripTokenFromHash();
-        setUser({ id: data.user?.id, email: data.user?.email }); // ← ДОБАВЛЕНО
-
-        // Жёсткий редирект, чтобы не застревать на /#/login
+        setUser({ id: data.user?.id, email: data.user?.email });
         window.location.replace(`${window.location.origin}/#/dashboard`);
         return;
       }
-      // если не ок — виджет на /login покажет ошибку
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   })();
 }, []);
+
 
 
   // 2) Подтянуть профиль по JWT
