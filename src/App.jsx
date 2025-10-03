@@ -1,4 +1,4 @@
-import AuthWidget from './components/AuthWidget.jsx';
+import AuthWidget from '@/components/ui/AuthWidget.jsx';
 import Cabinet from './pages/Cabinet.jsx'
 import React, { useEffect, useMemo, useState } from "react";
 import { HashRouter as Router, Routes, Route, Link, useNavigate, Navigate } from "react-router-dom";
