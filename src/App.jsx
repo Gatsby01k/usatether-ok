@@ -96,16 +96,17 @@ useEffect(() => {
       const r = await fetch(`/api/auth/verify?token=${token}`);
       const data = await r.json().catch(() => ({}));
       if (r.ok && data.token) {
+        // Сохраняем JWT и СРАЗУ помечаем пользователя залогиненным
         localStorage.setItem('jwt', data.token);
         stripTokenFromHash();
-        // ⬇️ ЖЁСТКИЙ РЕДИРЕКТ — чтобы не застревать на /#/login
+        setUser({ id: data.user?.id, email: data.user?.email }); // ← ДОБАВЛЕНО
+
+        // Жёсткий редирект, чтобы не застревать на /#/login
         window.location.replace(`${window.location.origin}/#/dashboard`);
         return;
       }
-      // если не ок — ничего не делаем: виджет на /login покажет ошибку
-    } catch {
-      // ignore
-    }
+      // если не ок — виджет на /login покажет ошибку
+    } catch { /* ignore */ }
   })();
 }, []);
 
