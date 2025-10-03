@@ -54,13 +54,19 @@ export default function AuthWidget({ onAuth }) {
   }
 
   async function submitSignup(e) {
-    e.preventDefault();
-    if (pass !== pass2) { setError('password_mismatch'); return; }
-    if (pass.length < 8) { setError('weak_password'); return; }
-    await post('/api/auth/register', { email, password: pass });
-    setTab('signin');
-    setInfo(`We sent a verification link to ${email}. Please confirm your account.`);
-  }
+  e.preventDefault();
+  if (pass !== pass2) { setError('password_mismatch'); return; }
+  if (pass.length < 8) { setError('weak_password'); return; }
+
+  await post('/api/auth/register', { email, password: pass });
+
+  // ✅ очистим введённые данные и покажем сообщение
+  setEmail('');
+  setPass('');
+  setPass2('');
+  setTab('signin');
+  setInfo(`We sent a verification link to ${email}. Please confirm your account.`);
+}
 
   return (
     <div className="rounded-2xl border p-6">
