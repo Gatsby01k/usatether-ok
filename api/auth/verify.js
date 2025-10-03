@@ -9,7 +9,6 @@ const pool = new Pool({
 
 function getQueryToken(req) {
   try {
-    // Vercel часто даёт req.query, но подстрахуемся
     const t1 = req?.query?.token;
     if (t1) return String(t1).trim();
     const url = new URL(req.url, 'http://x');
@@ -29,7 +28,7 @@ module.exports = async (req, res) => {
     const token = getQueryToken(req);
     if (!token) return res.status(400).json({ error: 'token_required' });
 
-    // 1) Ищем запись (без фильтра по NOW(), сперва смотрим что нашли)
+    // ищем запись по токену
     const r = await pool.query(
       `SELECT ac.id, ac.expires_at, ac.created_at, u.id AS user_id, u.email, NOW() AS now_utc
        FROM auth_codes ac
@@ -39,25 +38,23 @@ module.exports = async (req, res) => {
        LIMIT 1`,
       [token]
     );
-
     const row = r.rows[0];
     if (!row) {
       console.log('verify: token_not_found', token.slice(0, 8));
       return res.status(400).json({ error: 'invalid_or_expired' });
     }
 
-    // 2) Проверяем срок годности
+    // проверка срока
     if (row.expires_at <= row.now_utc) {
-      console.log('verify: token_expired', token.slice(0, 8), 'exp=', row.expires_at, 'now=', row.now_utc);
-      // Можно сразу удалить протухший токен:
+      console.log('verify: token_expired', token.slice(0, 8));
       await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
       return res.status(400).json({ error: 'invalid_or_expired' });
     }
 
-    // 3) Делаем токен одноразовым
+    // одноразовый
     await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
 
-    // 4) JWT на 7 дней
+    // выдаём JWT
     const jwtToken = jwt.sign(
       { sub: row.user_id, email: row.email },
       process.env.JWT_SECRET,
