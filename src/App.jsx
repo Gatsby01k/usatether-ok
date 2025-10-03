@@ -71,25 +71,39 @@ function useAuth() {
 
   // 1) Если пришли по magic-link (?token=...), подтвердить и сохранить jwt
 useEffect(() => {
+  function getTokenFromUrl() {
+    const sp = new URLSearchParams(window.location.search);
+    const t1 = sp.get('token');
+    if (t1) return t1;
+    const hash = window.location.hash || '';
+    const qIndex = hash.indexOf('?');
+    if (qIndex !== -1) {
+      const qs = hash.slice(qIndex + 1);
+      const t2 = new URLSearchParams(qs).get('token');
+      if (t2) return t2;
+    }
+    return null;
+  }
+  function stripTokenFromHash() {
+    const baseHash = (window.location.hash || '').split('?')[0] || '#/';
+    window.history.replaceState({}, '', window.location.pathname + baseHash);
+  }
+
   (async () => {
-    const params = new URLSearchParams(window.location.search);
-    const token = params.get('token');
-    if (token) {
-      try {
-        const r = await fetch(`/api/auth/verify?token=${token}`);
-        const data = await r.json();
-        if (r.ok && data.token) {
-          localStorage.setItem('jwt', data.token);
-          // очищаем query
-          window.history.replaceState({}, '', window.location.pathname + window.location.hash);
-          // фолбэк-редирект: если мы не на login, всё равно ведём в кабинет
-          if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
-            window.location.hash = '#/dashboard';
-          }
+    const token = getTokenFromUrl();
+    if (!token) return;
+    try {
+      const r = await fetch(`/api/auth/verify?token=${token}`);
+      const data = await r.json();
+      if (r.ok && data.token) {
+        localStorage.setItem('jwt', data.token);
+        stripTokenFromHash();
+        if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
+          window.location.hash = '#/dashboard';
         }
-      } catch {
-        // noop
       }
+    } catch {
+      // ignore
     }
   })();
 }, []);
