@@ -412,51 +412,21 @@ function CTA() {
 
 // ---------- Auth Pages (magic-link) ----------
 function Login() {
-  const { requestLoginLink } = useAuthContext();
-  const [email, setEmail] = useState("");
-  const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
-
-  const onSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    try {
-      await requestLoginLink(email);
-      setSent(true);
-    } catch (err) {
-      setError(err?.message || 'Auth error');
-    }
-  };
-
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
-      <Card>
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>Enter your email to receive a magic link.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {sent ? (
-            <p className="text-sm">Magic-link отправлен на <b>{email}</b>. Проверь почту и перейди по ссылке.</p>
-          ) : (
-            <form onSubmit={onSubmit} className="grid gap-4">
-              <div>
-                <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="mt-2"/>
-              </div>
-              <Button type="submit" className="gap-2"><LogIn className="h-4 w-4"/> Send magic link</Button>
-              {error && <p className="text-red-600 text-sm mt-2">{error}</p>}
-            </form>
-          )}
-        </CardContent>
-      </Card>
-      <p className="mt-4 text-center text-sm text-muted-foreground">No account? <Link to="/signup" className="underline">Create one</Link></p>
+      <AuthWidget
+        onAuth={(user, token) => {
+          // после подтверждения ссылки сохраняется JWT внутри виджета;
+          // здесь просто уводим в кабинет/дашборд
+          window.location.hash = '#/dashboard';
+        }}
+      />
     </div>
   );
 }
 
 function Signup() {
-  // та же форма, что и Login — первая ссылка создаст юзера при verify
+  // регистрация = тот же логин по magic-link, юзер создастся при verify
   return <Login />;
 }
 
