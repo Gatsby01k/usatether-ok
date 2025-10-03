@@ -440,18 +440,42 @@ function CTA() {
 // ---------- Auth Pages (magic-link) ----------
 function Login() {
   const { user, loading } = useAuthContext();
+
+  // слушаем событие авторизации из другого таба
+  useEffect(() => {
+    function goDash() {
+      window.location.replace(`${window.location.origin}/#/dashboard`);
+      setTimeout(() => window.location.reload(), 0);
+    }
+    function onStorage(e) {
+      if (e.key === 'auth_event') {
+        try {
+          const ev = JSON.parse(e.newValue || '{}');
+          if (ev.type === 'login') goDash();
+        } catch {}
+      }
+    }
+    window.addEventListener('storage', onStorage);
+    const bc = new BroadcastChannel('auth');
+    bc.onmessage = (ev) => { if (ev.data?.type === 'login') goDash(); };
+    return () => { window.removeEventListener('storage', onStorage); bc.close(); };
+  }, []);
+
   if (loading) return null;
   if (user) return <Navigate to="/dashboard" replace />;
 
   return (
     <div className="mx-auto mt-16 max-w-md px-4">
-      <AuthWidget onAuth={() => {
-        window.location.replace(`${window.location.origin}/#/dashboard`);
-        setTimeout(() => window.location.reload(), 0);
-      }} />
+      <AuthWidget
+        onAuth={() => {
+          window.location.replace(`${window.location.origin}/#/dashboard`);
+          setTimeout(() => window.location.reload(), 0);
+        }}
+      />
     </div>
   );
 }
+
 
 function Signup() {
   // регистрация = тот же логин по magic-link, юзер создастся при verify
