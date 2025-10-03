@@ -96,24 +96,44 @@ useEffect(() => {
   }
 
   (async () => {
+    // не перехватываем страницы сброса/забыли пароль
     const path = currentPath();
-    if (path === '#/reset' || path === '#/forgot') return; // не перехватываем reset/forgot
+    if (path === '#/reset' || path === '#/forgot') return;
 
     const token = getTokenFromUrl();
     if (!token) return;
+
     try {
       const r = await fetch(`/api/auth/verify?token=${token}`);
       const data = await r.json().catch(() => ({}));
+
       if (r.ok && data.token) {
+        // сохранить JWT, почистить URL
         localStorage.setItem('jwt', data.token);
         stripTokenFromHash();
-        // если тут есть setUser в замыкании — вызывай:
-        // setUser({ id: data.user?.id, email: data.user?.email });
-        window.location.replace(`${window.location.origin}/#/dashboard`);
+
+        // отметить пользователя в контексте
+        setUser({ id: data.user?.id, email: data.user?.email });
+
+        // разослать событие логина в другие вкладки
+        try {
+          localStorage.setItem('auth_event', JSON.stringify({ type: 'login', t: Date.now() }));
+          const bc = new BroadcastChannel('auth');
+          bc.postMessage({ type: 'login' });
+          bc.close();
+        } catch {}
+
+        // жёсткий переход в кабинет + мгновенный reload (чтобы контекст стабильно поднялся)
+        const dash = `${window.location.origin}/#/dashboard`;
+        window.location.replace(dash);
+        setTimeout(() => window.location.reload(), 0);
       }
-    } catch {}
+    } catch {
+      // ignore
+    }
   })();
 }, []);
+
 
   // 2) Подтянуть профиль по JWT
   useEffect(() => {
