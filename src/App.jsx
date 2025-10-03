@@ -75,10 +75,10 @@ useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const t1 = sp.get('token');
     if (t1) return t1;
-    const hash = window.location.hash || '';
-    const qIndex = hash.indexOf('?');
-    if (qIndex !== -1) {
-      const qs = hash.slice(qIndex + 1);
+    const h = window.location.hash || '';
+    const i = h.indexOf('?');
+    if (i !== -1) {
+      const qs = h.slice(i + 1);
       const t2 = new URLSearchParams(qs).get('token');
       if (t2) return t2;
     }
@@ -102,9 +102,7 @@ useEffect(() => {
           window.location.hash = '#/dashboard';
         }
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
   })();
 }, []);
 
