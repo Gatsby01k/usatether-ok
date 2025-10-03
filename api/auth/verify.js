@@ -1,8 +1,23 @@
-// Serverless-функция Vercel: GET /api/auth/verify?token=...
+// /api/auth/verify.js
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+function getQueryToken(req) {
+  try {
+    // Vercel часто даёт req.query, но подстрахуемся
+    const t1 = req?.query?.token;
+    if (t1) return String(t1).trim();
+    const url = new URL(req.url, 'http://x');
+    const t2 = url.searchParams.get('token');
+    if (t2) return String(t2).trim();
+  } catch {}
+  return '';
+}
 
 module.exports = async (req, res) => {
   try {
@@ -11,40 +26,45 @@ module.exports = async (req, res) => {
       return res.status(405).json({ error: 'method_not_allowed' });
     }
 
-    const { token } = req.query || {};
+    const token = getQueryToken(req);
     if (!token) return res.status(400).json({ error: 'token_required' });
 
-    const { rows } = await pool.query(
-      `SELECT * FROM login_tokens WHERE token=$1`,
+    // 1) Ищем запись (без фильтра по NOW(), сперва смотрим что нашли)
+    const r = await pool.query(
+      `SELECT ac.id, ac.expires_at, ac.created_at, u.id AS user_id, u.email, NOW() AS now_utc
+       FROM auth_codes ac
+       JOIN users u ON u.id = ac.user_id
+       WHERE ac.token = $1
+       ORDER BY ac.created_at DESC
+       LIMIT 1`,
       [token]
     );
-    const row = rows[0];
-    if (!row) return res.status(400).json({ error: 'invalid_token' });
-    if (row.used) return res.status(400).json({ error: 'token_used' });
-    if (new Date(row.expires_at) < new Date())
-      return res.status(400).json({ error: 'token_expired' });
 
-    // ensure user exists
-    let userRes = await pool.query(`SELECT * FROM users WHERE email=$1`, [row.email]);
-    let user = userRes.rows[0];
-    if (!user) {
-      userRes = await pool.query(
-        `INSERT INTO users (email) VALUES ($1) RETURNING *`,
-        [row.email]
-      );
-      user = userRes.rows[0];
+    const row = r.rows[0];
+    if (!row) {
+      console.log('verify: token_not_found', token.slice(0, 8));
+      return res.status(400).json({ error: 'invalid_or_expired' });
     }
 
-    await pool.query(`UPDATE login_tokens SET used=true WHERE token=$1`, [token]);
+    // 2) Проверяем срок годности
+    if (row.expires_at <= row.now_utc) {
+      console.log('verify: token_expired', token.slice(0, 8), 'exp=', row.expires_at, 'now=', row.now_utc);
+      // Можно сразу удалить протухший токен:
+      await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
+      return res.status(400).json({ error: 'invalid_or_expired' });
+    }
 
+    // 3) Делаем токен одноразовым
+    await pool.query('DELETE FROM auth_codes WHERE id = $1', [row.id]).catch(() => {});
+
+    // 4) JWT на 7 дней
     const jwtToken = jwt.sign(
-      { sub: user.id, email: user.email },
+      { sub: row.user_id, email: row.email },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
-    // Можно редиректить на фронт с токеном, но проще вернуть JSON
-    return res.json({ token: jwtToken, user: { id: user.id, email: user.email } });
+    return res.json({ token: jwtToken, user: { id: row.user_id, email: row.email } });
   } catch (e) {
     console.error('auth/verify error:', e);
     return res.status(500).json({ error: 'server_error' });
