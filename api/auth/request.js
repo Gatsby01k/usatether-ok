@@ -1,8 +1,8 @@
 // /api/auth/request.js
 const crypto = require('crypto');
-const { Resend } = require('resend');
+const { sendMail, MAIL_FROM } = require('../_mailer.js');
 
-let pool; // ленивое создание, чтобы не падать на уровне модуля
+let pool; // lazy to avoid module-level crashes
 function getPool() {
   if (!pool) {
     const { Pool } = require('pg');
@@ -15,8 +15,6 @@ function getPool() {
   return pool;
 }
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 module.exports = async (req, res) => {
   try {
     if (req.method !== 'POST') {
@@ -25,45 +23,50 @@ module.exports = async (req, res) => {
     }
 
     const { email } = req.body || {};
-    if (!email || !/.+@.+\..+/.test(email)) {
-      return res.status(400).json({ error: 'email_required' });
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'invalid_email' });
     }
 
-    const token = crypto.randomBytes(32).toString('hex');
-    const expires = new Date(Date.now() + 15 * 60 * 1000);
+    const pool = getPool();
 
-    // --- DB insert ---
+    // 1) upsert user
+    const u = await pool.query(
+      `INSERT INTO users (email)
+       VALUES ($1)
+       ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id, email`,
+      [email.toLowerCase()]
+    );
+    const user = u.rows[0];
+
+    // 2) generate token and store
+    const token = crypto.randomBytes(20).toString('hex');
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 15); // 15 min
+    await pool.query(
+      `INSERT INTO auth_codes (user_id, token, expires_at)
+       VALUES ($1, $2, $3)`,
+      [user.id, token, expiresAt]
+    );
+
+    // 3) magic link
+    const baseURL = process.env.PUBLIC_BASE_URL || 'https://usatether.io';
+    const verifyURL = `${baseURL}/?token=${token}`;
+
+    // 4) send email via unified Resend
+    const subject = 'Your USATether sign-in link';
+    const html = `<p>Hello,</p>
+<p>Click the button below to sign in:</p>
+<p><a href="${verifyURL}" style="display:inline-block;padding:10px 16px;border-radius:8px;background:#000;color:#fff;text-decoration:none">Sign in</a></p>
+<p>Or open this link: <br/><a href="${verifyURL}">${verifyURL}</a></p>
+<p>This link will expire in 15 minutes.</p>
+<p>— ${MAIL_FROM}</p>`;
+
     try {
-      const p = getPool();
-      await p.query(
-        'INSERT INTO login_tokens (token, email, expires_at) VALUES ($1,$2,$3)',
-        [token, email, expires]
-      );
-    } catch (dbErr) {
-      console.error('DB error:', dbErr);
-      return res.status(500).json({ error: dbErr.message || 'db_error' });
-    }
-
-    // --- verify URL ---
-    const base =
-      (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.replace(/\/$/, '')) ||
-      `https://${req.headers.host}`;
-    const verifyUrl = `${base}/api/auth/verify?token=${token}`;
-
-    // --- send email via Resend ---
-    try {
-      const mailFrom = process.env.MAIL_FROM || 'USATether <info@usatether.io>';
-      const sendRes = await resend.emails.send({
-        from: mailFrom,
-        to: email,
-        subject: 'USATether — вход по ссылке',
-        text: `Нажми, чтобы войти: ${verifyUrl}\nСсылка действует 15 минут.`
-      });
-      // опционально лог:
-      console.log('Resend ok:', sendRes?.id || sendRes);
+      await sendMail({ to: email, subject, html, text: `Sign in: ${verifyURL}` });
     } catch (mailErr) {
-      console.error('Resend error:', mailErr);
-      return res.status(500).json({ error: mailErr?.message || 'mail_error' });
+      console.error('sendMail error:', mailErr);
+      // Upstream failure → 502, чтобы отличать от наших 500
+      return res.status(502).json({ error: 'mail_failed' });
     }
 
     return res.json({ ok: true });
