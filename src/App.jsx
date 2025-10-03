@@ -98,8 +98,9 @@ useEffect(() => {
       if (r.ok && data.token) {
         localStorage.setItem('jwt', data.token);
         stripTokenFromHash();
-        // ВАЖНО: редиректим ВСЕГДА, даже если пришли на #/login
-        window.location.hash = '#/dashboard';
+        // ⬇️ ЖЁСТКИЙ РЕДИРЕКТ — чтобы не застревать на /#/login
+        window.location.replace(`${window.location.origin}/#/dashboard`);
+        return;
       }
       // если не ок — ничего не делаем: виджет на /login покажет ошибку
     } catch {
