@@ -1,111 +1,108 @@
-import { useState, useEffect } from 'react';
-
-function getTokenFromUrl() {
-  // 1) классический поиск до '#'
-  const sp = new URLSearchParams(window.location.search);
-  const t1 = sp.get('token');
-  if (t1) return t1;
-
-  // 2) если HashRouter: #/login?token=...
-  const hash = window.location.hash || '';
-  const qIndex = hash.indexOf('?');
-  if (qIndex !== -1) {
-    const qs = hash.slice(qIndex + 1);
-    const t2 = new URLSearchParams(qs).get('token');
-    if (t2) return t2;
-  }
-  return null;
-}
-
-function stripTokenFromHash() {
-  const baseHash = (window.location.hash || '').split('?')[0] || '#/login';
-  // Сохраняем route, но убираем query с токеном
-  window.history.replaceState({}, '', window.location.pathname + baseHash);
-}
+import { useEffect, useState } from 'react';
 
 export default function AuthWidget({ onAuth }) {
+  const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
   const [email, setEmail] = useState('');
-  const [sent, setSent] = useState(false);
+  const [pass, setPass] = useState('');
+  const [pass2, setPass2] = useState('');
   const [error, setError] = useState('');
-  const [checking, setChecking] = useState(true);
+  const [busy, setBusy] = useState(false);
 
-  // --- Проверка токена из URL (после перехода по magic-link) ---
-  useEffect(() => {
-    async function checkVerify() {
-      const token = getTokenFromUrl();
-      if (!token) { setChecking(false); return; }
-      try {
-        const res = await fetch(`/api/auth/verify?token=${token}`);
-        const data = await res.json().catch(() => ({}));
-        if (res.ok && data.token) {
-          localStorage.setItem('jwt', data.token);
-          stripTokenFromHash();
-          // опционально уведомим родителя
-          if (typeof onAuth === 'function') onAuth(data.user, data.token);
-          // 🔥 ЖЁСТКИЙ РЕДИРЕКТ В КАБИНЕТ (решает застревание на /#/login)
-          window.location.replace(`${window.location.origin}/#/dashboard`);
-          return;
-        } else {
-          setError(data.error || 'verify_failed');
-        }
-      } catch {
-        setError('verify_failed');
-      } finally {
-        setChecking(false);
-      }
-    }
-    checkVerify();
-  }, [onAuth]);
+  useEffect(() => { setError(''); }, [tab]);
 
-  async function submit(e) {
-    e.preventDefault();
-    setError('');
+  async function call(path, body) {
+    setBusy(true); setError('');
     try {
-      const r = await fetch('/api/auth/request', {
+      const r = await fetch(path, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify(body)
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j.error || 'request_failed');
-      setSent(true);
-    } catch (err) {
-      setError(err.message || 'request_failed');
+      // совместимость: кладём токен и даём наверх
+      if (j.token) localStorage.setItem('jwt', j.token);
+      if (typeof onAuth === 'function') onAuth(j.user, j.token);
+      // жёсткий редирект в кабинет
+      window.location.replace(`${window.location.origin}/#/dashboard`);
+    } catch (e) {
+      setError(String(e.message || 'request_failed'));
+    } finally {
+      setBusy(false);
     }
   }
 
-  if (checking) return null;
+  function submitSignin(e) {
+    e.preventDefault();
+    call('/api/auth/login', { email, password: pass });
+  }
+
+  function submitSignup(e) {
+    e.preventDefault();
+    if (pass !== pass2) { setError('password_mismatch'); return; }
+    if (pass.length < 8) { setError('weak_password'); return; }
+    call('/api/auth/register', { email, password: pass });
+  }
 
   return (
     <div className="rounded-2xl border p-6">
       <h2 className="mb-4 text-2xl font-bold">Вход / Регистрация</h2>
 
-      {sent ? (
-        <p>
-          Мы отправили magic-link на <b>{email}</b>. Проверь почту и перейди по ссылке, чтобы войти.
-        </p>
-      ) : (
-        <form onSubmit={submit} className="space-y-3">
+      <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl border">
+        <button
+          className={`p-2 text-sm ${tab==='signin' ? 'bg-foreground text-background' : ''}`}
+          onClick={() => setTab('signin')}
+        >Sign in</button>
+        <button
+          className={`p-2 text-sm ${tab==='signup' ? 'bg-foreground text-background' : ''}`}
+          onClick={() => setTab('signup')}
+        >Sign up</button>
+      </div>
+
+      {tab === 'signin' ? (
+        <form onSubmit={submitSignin} className="space-y-3">
           <input
             className="w-full rounded-xl border p-3"
             placeholder="you@example.com"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
+            type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
           />
-          <button className="w-full rounded-xl border p-3" type="submit">
-            Получить вход по e-mail
+          <input
+            className="w-full rounded-xl border p-3"
+            placeholder="Password"
+            type="password" value={pass} onChange={(e)=>setPass(e.target.value)} required
+          />
+          <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
+            {busy ? 'Signing in…' : 'Sign in'}
           </button>
-          {error && <p className="text-red-600 text-sm">{String(error)}</p>}
+          {error && <p className="text-red-600 text-sm">{error}</p>}
+        </form>
+      ) : (
+        <form onSubmit={submitSignup} className="space-y-3">
+          <input
+            className="w-full rounded-xl border p-3"
+            placeholder="you@example.com"
+            type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
+          />
+          <input
+            className="w-full rounded-xl border p-3"
+            placeholder="Password (min 8)"
+            type="password" value={pass} onChange={(e)=>setPass(e.target.value)} required
+          />
+          <input
+            className="w-full rounded-xl border p-3"
+            placeholder="Repeat password"
+            type="password" value={pass2} onChange={(e)=>setPass2(e.target.value)} required
+          />
+          <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
+            {busy ? 'Creating…' : 'Create account'}
+          </button>
+          {error && <p className="text-red-600 text-sm">{error}</p>}
         </form>
       )}
 
       <p className="text-xs mt-4 opacity-70">
         Почта проекта:{' '}
-        <a href="mailto:info@usatether.io" className="underline">
-          info@usatether.io
-        </a>
+        <a href="mailto:info@usatether.io" className="underline">info@usatether.io</a>
       </p>
     </div>
   );
