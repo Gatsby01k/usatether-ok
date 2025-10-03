@@ -1,9 +1,10 @@
-// Serverless-функция Vercel: POST /api/auth/request
+// /api/auth/request.js
 const { Pool } = require('pg');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 module.exports = async (req, res) => {
   try {
@@ -17,40 +18,29 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'email_required' });
     }
 
-    // генерим токен на 15 минут
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000);
-
     await pool.query(
       `INSERT INTO login_tokens (token, email, expires_at) VALUES ($1,$2,$3)`,
       [token, email, expires]
     );
 
     const baseUrl =
-      process.env.PUBLIC_BASE_URL?.replace(/\/$/, '') ||
+      (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.replace(/\/$/, '')) ||
       `https://${req.headers.host}`;
     const verifyUrl = `${baseUrl}/api/auth/verify?token=${token}`;
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: Number(process.env.SMTP_PORT) === 465, // true для 465 (SSL)
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || `USATether <${process.env.SMTP_USER}>`,
+    // === отправка письма через Resend (HTTP, работает из Vercel стабильно) ===
+    await resend.emails.send({
+      from: process.env.MAIL_FROM || `USATether <info@usatether.io>`,
       to: email,
       subject: 'USATether — вход по ссылке',
       text: `Нажми, чтобы войти: ${verifyUrl}\nСсылка действует 15 минут.`,
     });
 
     return res.json({ ok: true });
-  } catch (e) {
-    console.error('auth/request error:', e);
-    return res.status(500).json({ error: 'server_error' });
+  } catch (err) {
+    console.error('auth/request error:', err);
+    return res.status(500).json({ error: err?.message || 'server_error' });
   }
 };
