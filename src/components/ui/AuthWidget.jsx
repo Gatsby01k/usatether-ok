@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react';
 
 export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetToken = '' }) {
-  // режимы: 'auth' (signin/signup) | 'setpass' (по ссылке из письма)
-  const [tab, setTab] = useState('signin');
+  // режимы: 'auth' (signin/signup/forgot) | 'setpass' (по ссылке из письма)
   const [mode, setMode] = useState(initialMode);
+  const [tab, setTab] = useState('signin'); // 'signin' | 'signup' | 'forgot'
+
+  // поля
   const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [pass2, setPass2] = useState('');
   const [newPass, setNewPass] = useState('');
   const [newPass2, setNewPass2] = useState('');
   const [resetToken, setResetToken] = useState(initialResetToken);
+
+  // UI
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [busy, setBusy] = useState(false);
@@ -21,7 +25,7 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
   const [showNew1, setShowNew1] = useState(false);
   const [showNew2, setShowNew2] = useState(false);
 
-  // если Login передал параметры — фиксируем их
+  // применяем значения, переданные из Login
   useEffect(() => {
     if (initialMode === 'setpass') setMode('setpass');
     if (initialResetToken) setResetToken(initialResetToken);
@@ -51,6 +55,7 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
     }
   }
 
+  // --- Sign in ---
   async function submitSignin(e) {
     e.preventDefault();
     try {
@@ -62,11 +67,12 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
       setTimeout(() => window.location.reload(), 0);
     } catch (e) {
       if (String(e.message).includes('email_not_verified')) {
-        setInfo('Account is not verified. Check your inbox or resend from Sign up.');
+        setInfo('Account is not verified. Check your inbox or switch to Sign up to resend verification.');
       }
     }
   }
 
+  // --- Sign up ---
   async function submitSignup(e) {
     e.preventDefault();
     if (pass !== pass2) { setError('password_mismatch'); return; }
@@ -76,14 +82,18 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
     setInfo(`We sent a verification link to ${email}. Please confirm your account.`);
   }
 
-  async function requestReset() {
+  // --- Forgot (request reset) ---
+  async function submitForgot(e) {
+    e.preventDefault();
     if (!email) { setError('enter_email_first'); return; }
     try {
       await post('/api/auth/reset-request', { email });
+      // нейтральный фидбек (без раскрытия, есть ли такой e-mail)
       setInfo(`If this email exists, a reset link has been sent to ${email}.`);
     } catch {}
   }
 
+  // --- Set new password (from email link) ---
   async function submitSetNew(e) {
     e.preventDefault();
     if (!resetToken) { setError('invalid_or_expired'); return; }
@@ -105,7 +115,8 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
 
       {mode === 'auth' && (
         <>
-          <div className="mb-4 grid grid-cols-2 overflow-hidden rounded-xl border">
+          {/* Три вкладки: Sign in / Sign up / Forgot */}
+          <div className="mb-4 grid grid-cols-3 overflow-hidden rounded-xl border">
             <button
               className={`p-2 text-sm ${tab==='signin' ? 'bg-foreground text-background' : ''}`}
               onClick={() => setTab('signin')}
@@ -114,11 +125,15 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
               className={`p-2 text-sm ${tab==='signup' ? 'bg-foreground text-background' : ''}`}
               onClick={() => setTab('signup')}
             >Sign up</button>
+            <button
+              className={`p-2 text-sm ${tab==='forgot' ? 'bg-foreground text-background' : ''}`}
+              onClick={() => setTab('forgot')}
+            >Forgot</button>
           </div>
 
           {info && <div className="mb-3 rounded-xl border p-3 text-sm">{info}</div>}
 
-          {tab === 'signin' ? (
+          {tab === 'signin' && (
             <form onSubmit={submitSignin} className="space-y-3">
               <input
                 className="w-full rounded-xl border p-3"
@@ -144,13 +159,15 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
                 <button disabled={busy} className="rounded-xl border px-4 py-2" type="submit">
                   {busy ? 'Signing in…' : 'Sign in'}
                 </button>
-                <button type="button" className="text-sm underline" onClick={requestReset}>
+                <button type="button" className="text-sm underline" onClick={() => setTab('forgot')}>
                   Forgot password?
                 </button>
               </div>
               {error && <p className="text-red-600 text-sm">{error}</p>}
             </form>
-          ) : (
+          )}
+
+          {tab === 'signup' && (
             <form onSubmit={submitSignup} className="space-y-3">
               <input
                 className="w-full rounded-xl border p-3"
@@ -185,6 +202,27 @@ export default function AuthWidget({ onAuth, initialMode = 'auth', initialResetT
                 {busy ? 'Sending verification…' : 'Create account'}
               </button>
               {error && <p className="text-red-600 text-sm">{error}</p>}
+            </form>
+          )}
+
+          {tab === 'forgot' && (
+            <form onSubmit={submitForgot} className="space-y-3">
+              <input
+                className="w-full rounded-xl border p-3"
+                placeholder="Enter your e-mail"
+                type="email" value={email} onChange={(e)=>setEmail(e.target.value)} required
+              />
+              <button disabled={busy} className="w-full rounded-xl border p-3" type="submit">
+                {busy ? 'Sending link…' : 'Send reset link'}
+              </button>
+              {info && <p className="text-sm">{info}</p>}
+              {error && <p className="text-red-600 text-sm">{error}</p>}
+              <div className="text-xs opacity-70">
+                Don’t have an account?{' '}
+                <button type="button" className="underline" onClick={() => setTab('signup')}>
+                  Create one
+                </button>
+              </div>
             </form>
           )}
         </>
