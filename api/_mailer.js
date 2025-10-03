@@ -1,41 +1,15 @@
-// CommonJS mailer wrapper around Resend for serverless funcs
-let resend; // lazy
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const PROJECT_EMAIL = process.env.PROJECT_EMAIL || 'info@usatether.io';
-const MAIL_FROM = process.env.MAIL_FROM || `USATether <${PROJECT_EMAIL}>`;
-
-function getResend() {
-  if (!resend) {
-    const { Resend } = require('resend');
-    const key = process.env.RESEND_API_KEY || '';
-    resend = new Resend(key);
-  }
-  return resend;
-}
-
-async function sendMail({ to, subject, text, html }) {
-  if (!process.env.RESEND_API_KEY) {
-    const e = new Error('mail_config_missing');
-    e.details = 'RESEND_API_KEY is not set';
-    e.code = 'CONFIG';
-    throw e;
-  }
-  const client = getResend();
-  const payload = {
-    from: MAIL_FROM,
-    to,
+async function sendMail({ to, subject, text, html, from }) {
+  const fromAddr = from || process.env.MAIL_FROM || 'USATether <info@usatether.io>';
+  await resend.emails.send({
+    from: fromAddr,
+    to: Array.isArray(to) ? to : [to],
     subject,
     text,
-    html: html || (text ? `<p>${text}</p>` : undefined),
-  };
-  try {
-    const res = await client.emails.send(payload);
-    console.log('Resend send ok:', { id: res?.id || res });
-    return res;
-  } catch (err) {
-    console.error('Resend send failed:', err?.message || err);
-    throw err;
-  }
+    html,
+  });
 }
 
-module.exports = { sendMail, PROJECT_EMAIL, MAIL_FROM };
+module.exports = { sendMail };
