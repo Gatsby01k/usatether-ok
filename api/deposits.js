@@ -2,7 +2,7 @@
 
 const { Pool } = require('pg');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { sendMail, PROJECT_EMAIL } = require('./_mailer.js');
 
 // --- DB pool (Neon) ---
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -14,62 +14,37 @@ function requireAuth(req) {
   return jwt.verify(h.slice(7), process.env.JWT_SECRET); // { sub, email }
 }
 
-async function sendMail({ to, subject, text }) {
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: Number(process.env.SMTP_PORT) === 465, // true для 465 (SSL)
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-  });
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || `USATether <${process.env.SMTP_USER}>`,
-    to,
-    subject,
-    text,
-  });
-}
-
-// --- handler ---
 module.exports = async (req, res) => {
   try {
-    const user = requireAuth(req); // { sub: user_id, email }
-    const userId = user.sub;
-    const email = user.email || '';
-
     if (req.method === 'GET') {
-      const { rows } = await pool.query(
-        `SELECT id, amount_usat, created_at
-           FROM deposits
-          WHERE user_id = $1
-          ORDER BY created_at DESC
-          LIMIT 100`,
-        [userId]
+      const auth = requireAuth(req);
+      const r = await pool.query(
+        'SELECT id, amount, currency, status, created_at FROM deposits WHERE user_id=$1 ORDER BY created_at DESC',
+        [auth.sub]
       );
-      return res.json(rows || []);
+      return res.json({ items: r.rows });
     }
 
     if (req.method === 'POST') {
-      const { amount, amount_usat } = req.body || {};
-      const amt = Number(amount ?? amount_usat);
-      if (!amt || amt <= 0) return res.status(400).json({ error: 'bad_amount' });
+      const auth = requireAuth(req);
+      const { amount, currency } = req.body || {};
+      if (!amount || !currency) return res.status(400).json({ error: 'bad_request' });
 
-      const insert = await pool.query(
-        `INSERT INTO deposits (user_id, amount_usat)
-         VALUES ($1, $2)
-         RETURNING id, user_id, amount_usat, created_at`,
-        [userId, amt]
+      const i = await pool.query(
+        'INSERT INTO deposits (user_id, amount, currency, status) VALUES ($1, $2, $3, $4) RETURNING *',
+        [auth.sub, amount, currency, 'pending']
       );
-      const row = insert.rows[0];
+      const row = i.rows[0];
 
-      // письмо пользователю и на проектную почту (если указана)
-      const projectEmail = process.env.PROJECT_EMAIL || '';
-      const recipients = [email, projectEmail].filter(Boolean).join(', ');
-      if (recipients) {
+      // Notify project email about new deposit via Resend (non-blocking for client)
+      try {
         await sendMail({
-          to: recipients,
-          subject: 'USATether: депозит создан',
-          text: `Мы зафиксировали депозит на сумму ${amt.toFixed(2)} USA₮. Спасибо!`,
+          to: PROJECT_EMAIL,
+          subject: 'New deposit created',
+          text: `User ${auth.email} created a deposit: ${amount} ${currency} (id ${row.id}).`
         });
+      } catch (e) {
+        console.error('deposit notify mail failed:', e?.message || e);
       }
 
       return res.json(row);
