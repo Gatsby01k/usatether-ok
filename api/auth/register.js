@@ -1,8 +1,6 @@
-// /api/auth/register.js
 const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { sendMail } = require('../_mailer.js'); // опционально: welcome
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -29,9 +27,8 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: 'weak_password' });
     }
 
-    const pwHash = await bcrypt.hash(password, 12);
+    const hash = await bcrypt.hash(password, 12);
 
-    // если юзер есть — обновим ему пароль; если нет — создадим
     const q = `
       INSERT INTO users (email, password_hash, password_set_at)
       VALUES ($1, $2, now())
@@ -40,21 +37,15 @@ module.exports = async (req, res) => {
             password_set_at = EXCLUDED.password_set_at
       RETURNING id, email
     `;
-    const u = await pool.query(q, [em, pwHash]);
+    const u = await pool.query(q, [em, hash]);
     const user = u.rows[0];
 
-    // welcome (не критично)
-    try {
-      await sendMail({
-        to: em,
-        subject: 'Welcome to USATether',
-        text: 'Your account has been created.',
-      });
-    } catch {}
+    const token = jwt.sign(
+      { sub: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '7d' }
+    );
 
-    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET, { expiresIn: '7d' });
-
-    // HttpOnly cookie (и вернём JSON для совместимости)
     res.setHeader('Set-Cookie', [
       `jwt=${token}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax`,
     ]);
