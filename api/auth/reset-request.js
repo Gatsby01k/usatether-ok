@@ -39,7 +39,7 @@ module.exports = async (req, res) => {
       [user.id, token, expires]
     );
 
-    const resetUrl = `${baseUrl(req)}/#/login?reset=1&token=${token}`;
+    const resetUrl = `${baseUrl(req)}/#/reset?token=${token}`;
     await sendMail({
       to: user.email,
       subject: 'USATether — password reset',
