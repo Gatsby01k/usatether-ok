@@ -20,6 +20,7 @@ module.exports = async (req, res) => {
 
     const { email, password } = req.body || {};
     const em = normalizeEmail(email);
+
     if (!em || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) {
       return res.status(400).json({ error: 'invalid_email' });
     }
@@ -49,7 +50,7 @@ module.exports = async (req, res) => {
     res.setHeader('Set-Cookie', [
       `jwt=${token}; Path=/; Max-Age=604800; HttpOnly; Secure; SameSite=Lax`,
     ]);
-    return res.json({ token, user });
+    return res.status(201).json({ token, user });
   } catch (e) {
     console.error('auth/register error:', e);
     return res.status(500).json({ error: 'server_error' });
