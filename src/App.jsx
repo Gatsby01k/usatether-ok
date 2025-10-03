@@ -70,23 +70,30 @@ function useAuth() {
   const [loading, setLoading] = useState(true);
 
   // 1) Если пришли по magic-link (?token=...), подтвердить и сохранить jwt
-  useEffect(() => {
-    (async () => {
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('token');
-      if (token) {
-        try {
-          const r = await fetch(`/api/auth/verify?token=${token}`);
-          const data = await r.json();
-          if (r.ok && data.token) {
-            localStorage.setItem('jwt', data.token);
-            // чистим URL
-            window.history.replaceState({}, '', window.location.pathname);
+useEffect(() => {
+  (async () => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token');
+    if (token) {
+      try {
+        const r = await fetch(`/api/auth/verify?token=${token}`);
+        const data = await r.json();
+        if (r.ok && data.token) {
+          localStorage.setItem('jwt', data.token);
+          // очищаем query
+          window.history.replaceState({}, '', window.location.pathname + window.location.hash);
+          // фолбэк-редирект: если мы не на login, всё равно ведём в кабинет
+          if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#') {
+            window.location.hash = '#/dashboard';
           }
-        } catch {}
+        }
+      } catch {
+        // noop
       }
-    })();
-  }, []);
+    }
+  })();
+}, []);
+
 
   // 2) Подтянуть профиль по JWT
   useEffect(() => {
