@@ -11,30 +11,32 @@ export default function AuthWidget({ onAuth }) {
   useEffect(() => { setError(''); }, [tab]);
 
   async function call(path, body) {
-  setBusy(true); setError('');
+  setBusy(true); 
+  setError('');
   try {
     const r = await fetch(path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      credentials: 'same-origin', // на всякий случай
+      credentials: 'include',            // <-- берём/ставим cookie во всех случаях
     });
 
-    const text = await r.text();          // читаем как текст
+    const raw = await r.text();          // читаем как текст, чтобы не падать на пустом ответе
     let j = {};
-    try { j = JSON.parse(text); } catch {} // пытаемся распарсить в JSON
+    try { j = JSON.parse(raw); } catch {}
 
     if (!r.ok) {
-      // покажем смысловую ошибку или хотя бы http-код/тело
-      const msg = j.error || text || `http_${r.status}`;
-      throw new Error(msg);
+      throw new Error(j.error || raw || `http_${r.status}`);
     }
 
+    // совместимость со старым фронтом
     if (j.token) localStorage.setItem('jwt', j.token);
     if (typeof onAuth === 'function') onAuth(j.user, j.token);
 
-    // жёсткий редирект в кабинет
-    window.location.replace(`${window.location.origin}/#/dashboard`);
+    // 🔥 жёсткий и мгновенный редирект — исключаем залипание на /#/login
+    const dash = `${window.location.origin}/#/dashboard`;
+    setTimeout(() => { window.location.replace(dash); }, 0);
+    return;
   } catch (e) {
     setError(String(e.message || 'request_failed'));
   } finally {
