@@ -1,5 +1,5 @@
 // CommonJS mailer wrapper around Resend for serverless funcs
-let resend; // ← ленивое создание после первого вызова
+let resend; // lazy
 
 const PROJECT_EMAIL = process.env.PROJECT_EMAIL || 'info@usatether.io';
 const MAIL_FROM = process.env.MAIL_FROM || `USATether <${PROJECT_EMAIL}>`;
@@ -13,14 +13,6 @@ function getResend() {
   return resend;
 }
 
-/**
- * sendMail - unified mail sender via Resend
- * @param {Object} opts
- * @param {string|string[]} opts.to
- * @param {string} opts.subject
- * @param {string} [opts.text]
- * @param {string} [opts.html]
- */
 async function sendMail({ to, subject, text, html }) {
   if (!process.env.RESEND_API_KEY) {
     const e = new Error('mail_config_missing');
@@ -28,7 +20,6 @@ async function sendMail({ to, subject, text, html }) {
     e.code = 'CONFIG';
     throw e;
   }
-
   const client = getResend();
   const payload = {
     from: MAIL_FROM,
