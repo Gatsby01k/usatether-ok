@@ -9,6 +9,7 @@
     "preview": "vite preview --port 4173"
   },
   "dependencies": {
+    "bcryptjs": "^2.4.3",
     "framer-motion": "^11.0.0",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.12.0",
