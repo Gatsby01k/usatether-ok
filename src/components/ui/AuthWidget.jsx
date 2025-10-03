@@ -11,26 +11,37 @@ export default function AuthWidget({ onAuth }) {
   useEffect(() => { setError(''); }, [tab]);
 
   async function call(path, body) {
-    setBusy(true); setError('');
-    try {
-      const r = await fetch(path, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(j.error || 'request_failed');
-      // совместимость: кладём токен и даём наверх
-      if (j.token) localStorage.setItem('jwt', j.token);
-      if (typeof onAuth === 'function') onAuth(j.user, j.token);
-      // жёсткий редирект в кабинет
-      window.location.replace(`${window.location.origin}/#/dashboard`);
-    } catch (e) {
-      setError(String(e.message || 'request_failed'));
-    } finally {
-      setBusy(false);
+  setBusy(true); setError('');
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      credentials: 'same-origin', // на всякий случай
+    });
+
+    const text = await r.text();          // читаем как текст
+    let j = {};
+    try { j = JSON.parse(text); } catch {} // пытаемся распарсить в JSON
+
+    if (!r.ok) {
+      // покажем смысловую ошибку или хотя бы http-код/тело
+      const msg = j.error || text || `http_${r.status}`;
+      throw new Error(msg);
     }
+
+    if (j.token) localStorage.setItem('jwt', j.token);
+    if (typeof onAuth === 'function') onAuth(j.user, j.token);
+
+    // жёсткий редирект в кабинет
+    window.location.replace(`${window.location.origin}/#/dashboard`);
+  } catch (e) {
+    setError(String(e.message || 'request_failed'));
+  } finally {
+    setBusy(false);
   }
+}
+
 
   function submitSignin(e) {
     e.preventDefault();
