@@ -1,9 +1,20 @@
 // /api/auth/request.js
-const { Pool } = require('pg');
 const crypto = require('crypto');
 const { Resend } = require('resend');
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+let pool; // ленивое создание, чтобы не падать на уровне модуля
+function getPool() {
+  if (!pool) {
+    const { Pool } = require('pg');
+    const cs = process.env.DATABASE_URL;
+    if (!cs || !/^postgres/i.test(cs)) {
+      throw new Error('DATABASE_URL is invalid or empty');
+    }
+    pool = new Pool({ connectionString: cs });
+  }
+  return pool;
+}
+
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 module.exports = async (req, res) => {
@@ -21,32 +32,43 @@ module.exports = async (req, res) => {
     const token = crypto.randomBytes(32).toString('hex');
     const expires = new Date(Date.now() + 15 * 60 * 1000);
 
-    // ЛОГ ДЛЯ ПРОВЕРКИ DB
-    console.log('Saving token for', email);
-    await pool.query(
-      `INSERT INTO login_tokens (token, email, expires_at) VALUES ($1,$2,$3)`,
-      [token, email, expires]
-    );
+    // --- DB insert ---
+    try {
+      const p = getPool();
+      await p.query(
+        'INSERT INTO login_tokens (token, email, expires_at) VALUES ($1,$2,$3)',
+        [token, email, expires]
+      );
+    } catch (dbErr) {
+      console.error('DB error:', dbErr);
+      return res.status(500).json({ error: dbErr.message || 'db_error' });
+    }
 
-    const baseUrl =
+    // --- verify URL ---
+    const base =
       (process.env.PUBLIC_BASE_URL && process.env.PUBLIC_BASE_URL.replace(/\/$/, '')) ||
       `https://${req.headers.host}`;
-    const verifyUrl = `${baseUrl}/api/auth/verify?token=${token}`;
+    const verifyUrl = `${base}/api/auth/verify?token=${token}`;
 
-    console.log('Sending email via Resend to', email);
-
-    const mailRes = await resend.emails.send({
-      from: process.env.MAIL_FROM || `USATether <info@usatether.io>`,
-      to: email,
-      subject: 'USATether — вход по ссылке',
-      text: `Нажми, чтобы войти: ${verifyUrl}\nСсылка действует 15 минут.`,
-    });
-
-    console.log('Resend response:', mailRes);
+    // --- send email via Resend ---
+    try {
+      const mailFrom = process.env.MAIL_FROM || 'USATether <info@usatether.io>';
+      const sendRes = await resend.emails.send({
+        from: mailFrom,
+        to: email,
+        subject: 'USATether — вход по ссылке',
+        text: `Нажми, чтобы войти: ${verifyUrl}\nСсылка действует 15 минут.`
+      });
+      // опционально лог:
+      console.log('Resend ok:', sendRes?.id || sendRes);
+    } catch (mailErr) {
+      console.error('Resend error:', mailErr);
+      return res.status(500).json({ error: mailErr?.message || 'mail_error' });
+    }
 
     return res.json({ ok: true });
   } catch (err) {
-    console.error('auth/request error:', err);
+    console.error('auth/request fatal:', err);
     return res.status(500).json({ error: err?.message || 'server_error' });
   }
 };
