@@ -1,4 +1,4 @@
-import Forgot from './pages/Forgot.jsx';
+
 import Reset from './pages/Reset.jsx';
 import AuthWidget from '@/components/ui/AuthWidget.jsx';
 import Cabinet from './pages/Cabinet.jsx'
