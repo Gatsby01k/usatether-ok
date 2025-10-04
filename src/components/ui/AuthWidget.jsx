@@ -1,4 +1,3 @@
-// src/components/ui/AuthWidget.jsx
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
@@ -6,10 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-// небольшие утилиты
-function cx(...arr) { return arr.filter(Boolean).join(' '); }
+function cx(...a) { return a.filter(Boolean).join(' '); }
 async function postJSON(path, body, setError, setBusy) {
   setBusy?.(true); setError?.('');
   try {
@@ -32,20 +29,20 @@ async function postJSON(path, body, setError, setBusy) {
 }
 
 export default function AuthWidget({ onAuth }) {
-  // вкладки
-  const [tab, setTab] = useState('signin'); // signin | signup
+  // только ОДНА форма за раз
+  const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
 
   // поля
   const [email, setEmail] = useState('');
   const [pass, setPass]   = useState('');
   const [pass2, setPass2] = useState('');
 
-  // UI state
+  // UI
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState('');
   const [info, setInfo]   = useState('');
 
-  // show/hide password
+  // show/hide
   const [showSignPass, setShowSignPass] = useState(false);
   const [showUpPass1, setShowUpPass1]   = useState(false);
   const [showUpPass2, setShowUpPass2]   = useState(false);
@@ -76,17 +73,16 @@ export default function AuthWidget({ onAuth }) {
 
     await postJSON('/api/auth/register', { email, password: pass }, setError, setBusy);
 
-    // очистим поля и покажем понятный next step
+    // очистить форму и переключить на вход
     const to = email;
     setEmail(''); setPass(''); setPass2('');
     setTab('signin');
     setInfo(`We sent a verification link to ${to}. Please confirm your account.`);
   }
 
-  // --- UI ---
   return (
     <div className="relative">
-      {/* тонкая branded-полоска наверху */}
+      {/* фирменная полоска */}
       <div className="absolute inset-x-0 -top-4 h-1.5 bg-gradient-to-r from-red-500 via-white to-blue-600 rounded-full" />
 
       <Card className="overflow-hidden shadow-lg">
@@ -103,189 +99,209 @@ export default function AuthWidget({ onAuth }) {
         </CardHeader>
 
         <CardContent className="pt-0">
-          {/* Tabs header */}
-          <Tabs value={tab} onValueChange={setTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-2 rounded-xl">
-              <TabsTrigger value="signin">Sign in</TabsTrigger>
-              <TabsTrigger value="signup">Sign up</TabsTrigger>
-            </TabsList>
+          {/* СЕГМЕНТ-ПЕРЕКЛЮЧАТЕЛЬ */}
+          <div className="mb-4 grid grid-cols-2 rounded-xl border p-1">
+            <button
+              type="button"
+              onClick={() => setTab('signin')}
+              className={cx(
+                'rounded-lg py-2 text-sm transition',
+                tab === 'signin'
+                  ? 'bg-foreground text-background'
+                  : 'text-foreground/70 hover:bg-muted'
+              )}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab('signup')}
+              className={cx(
+                'rounded-lg py-2 text-sm transition',
+                tab === 'signup'
+                  ? 'bg-foreground text-background'
+                  : 'text-foreground/70 hover:bg-muted'
+              )}
+            >
+              Sign up
+            </button>
+          </div>
 
-            {/* Info / Error banners */}
-            {!!info && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
-                <div>{info}</div>
+          {/* banners */}
+          {!!info && (
+            <div className="mt-3 mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
+              <div>{info}</div>
+            </div>
+          )}
+          {!!error && (
+            <div className="mt-3 mb-4 flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/40 dark:text-red-300">
+              <AlertCircle className="mt-0.5 h-4 w-4" />
+              <div>{error}</div>
+            </div>
+          )}
+
+          {/* ---------- SIGN IN ---------- */}
+          {tab === 'signin' && (
+            <form onSubmit={onSignin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email-in">Email</Label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
+                  <Input
+                    id="email-in"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-9"
+                    required
+                  />
+                </div>
               </div>
-            )}
-            {!!error && (
-              <div className="mt-4 flex items-start gap-2 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800/40 dark:bg-red-950/40 dark:text-red-300">
-                <AlertCircle className="mt-0.5 h-4 w-4" />
-                <div>{error}</div>
+
+              <div className="space-y-2">
+                <Label htmlFor="pass-in">Password</Label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
+                  <Input
+                    id="pass-in"
+                    type={showSignPass ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    className="pl-9 pr-12"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showSignPass ? 'Hide password' : 'Show password'}
+                    aria-pressed={showSignPass}
+                    onClick={() => setShowSignPass(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
+                  >
+                    {showSignPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
-            )}
 
-            {/* SIGN IN */}
-            <TabsContent value="signin" className="mt-6 space-y-4">
-              <form onSubmit={onSignin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email-in">Email</Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                    <Input
-                      id="email-in"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9"
-                      required
-                    />
-                  </div>
+              <div className="flex items-center justify-between">
+                <Button
+                  type="submit"
+                  disabled={busy}
+                  className={cx(
+                    'group',
+                    'bg-gradient-to-r from-red-600 via-red-500 to-blue-600 text-white',
+                    'hover:from-red-500 hover:via-red-400 hover:to-blue-500'
+                  )}
+                >
+                  {busy ? 'Signing in…' : 'Sign in'}
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                </Button>
+
+                <Link to="/forgot" className="text-sm underline text-muted-foreground hover:text-foreground">
+                  Forgot password?
+                </Link>
+              </div>
+            </form>
+          )}
+
+          {/* ---------- SIGN UP ---------- */}
+          {tab === 'signup' && (
+            <form onSubmit={onSignup} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="email-up">Email</Label>
+                <div className="relative">
+                  <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
+                  <Input
+                    id="email-up"
+                    type="email"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="pl-9"
+                    required
+                  />
                 </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="pass-in">Password</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                    <Input
-                      id="pass-in"
-                      type={showSignPass ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      value={pass}
-                      onChange={(e) => setPass(e.target.value)}
-                      className="pl-9 pr-12"
-                      required
-                    />
-                    <button
-                      type="button"
-                      aria-label={showSignPass ? 'Hide password' : 'Show password'}
-                      aria-pressed={showSignPass}
-                      onClick={() => setShowSignPass(v => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    >
-                      {showSignPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Button
-                    type="submit"
-                    disabled={busy}
-                    className={cx(
-                      'group',
-                      'bg-gradient-to-r from-red-600 via-red-500 to-blue-600 text-white',
-                      'hover:from-red-500 hover:via-red-400 hover:to-blue-500'
-                    )}
+              <div className="space-y-2">
+                <Label htmlFor="pass-up">Password (min 8)</Label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
+                  <Input
+                    id="pass-up"
+                    type={showUpPass1 ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    className="pl-9 pr-12"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showUpPass1 ? 'Hide password' : 'Show password'}
+                    aria-pressed={showUpPass1}
+                    onClick={() => setShowUpPass1(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
                   >
-                    {busy ? 'Signing in…' : 'Sign in'}
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </Button>
-
-                  <Link to="/forgot" className="text-sm underline text-muted-foreground hover:text-foreground">
-                    Forgot password?
-                  </Link>
+                    {showUpPass1 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-              </form>
-            </TabsContent>
+              </div>
 
-            {/* SIGN UP */}
-            <TabsContent value="signup" className="mt-6 space-y-4">
-              <form onSubmit={onSignup} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email-up">Email</Label>
-                  <div className="relative">
-                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                    <Input
-                      id="email-up"
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="pl-9"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pass-up">Password (min 8)</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                    <Input
-                      id="pass-up"
-                      type={showUpPass1 ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      value={pass}
-                      onChange={(e) => setPass(e.target.value)}
-                      className="pl-9 pr-12"
-                      required
-                    />
-                    <button
-                      type="button"
-                      aria-label={showUpPass1 ? 'Hide password' : 'Show password'}
-                      aria-pressed={showUpPass1}
-                      onClick={() => setShowUpPass1(v => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    >
-                      {showUpPass1 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="pass2-up">Repeat password</Label>
-                  <div className="relative">
-                    <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
-                    <Input
-                      id="pass2-up"
-                      type={showUpPass2 ? 'text' : 'password'}
-                      placeholder="••••••••"
-                      value={pass2}
-                      onChange={(e) => setPass2(e.target.value)}
-                      className="pl-9 pr-12"
-                      required
-                    />
-                    <button
-                      type="button"
-                      aria-label={showUpPass2 ? 'Hide password' : 'Show password'}
-                      aria-pressed={showUpPass2}
-                      onClick={() => setShowUpPass2(v => !v)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
-                    >
-                      {showUpPass2 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <Button
-                    type="submit"
-                    disabled={busy}
-                    className={cx(
-                      'group',
-                      'bg-gradient-to-r from-red-600 via-red-500 to-blue-600 text-white',
-                      'hover:from-red-500 hover:via-red-400 hover:to-blue-500'
-                    )}
+              <div className="space-y-2">
+                <Label htmlFor="pass2-up">Repeat password</Label>
+                <div className="relative">
+                  <Lock className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 opacity-60" />
+                  <Input
+                    id="pass2-up"
+                    type={showUpPass2 ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    value={pass2}
+                    onChange={(e) => setPass2(e.target.value)}
+                    className="pl-9 pr-12"
+                    required
+                  />
+                  <button
+                    type="button"
+                    aria-label={showUpPass2 ? 'Hide password' : 'Show password'}
+                    aria-pressed={showUpPass2}
+                    onClick={() => setShowUpPass2(v => !v)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-muted"
                   >
-                    {busy ? 'Sending…' : 'Create account'}
-                    <ShieldCheck className="ml-2 h-4 w-4" />
-                  </Button>
-
-                  <span className="text-xs text-muted-foreground">
-                    Already have an account?{' '}
-                    <button onClick={() => setTab('signin')} type="button" className="underline">
-                      Sign in
-                    </button>
-                  </span>
+                    {showUpPass2 ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
                 </div>
-              </form>
-            </TabsContent>
-          </Tabs>
+              </div>
+
+              <div className="flex items-center justify-between">
+                <Button
+                  type="submit"
+                  disabled={busy}
+                  className={cx(
+                    'group',
+                    'bg-gradient-to-r from-red-600 via-red-500 to-blue-600 text-white',
+                    'hover:from-red-500 hover:via-red-400 hover:to-blue-500'
+                  )}
+                >
+                  {busy ? 'Sending…' : 'Create account'}
+                  <ShieldCheck className="ml-2 h-4 w-4" />
+                </Button>
+
+                <span className="text-xs text-muted-foreground">
+                  Already have an account?{' '}
+                  <button onClick={() => setTab('signin')} type="button" className="underline">
+                    Sign in
+                  </button>
+                </span>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
 
-      {/* сзади лёгкий brand-глоу */}
+      {/* лёгкое бренд-свечение на фоне */}
       <div className="pointer-events-none absolute -inset-4 -z-10 blur-2xl opacity-60" aria-hidden>
         <div className="h-full w-full bg-[radial-gradient(70%_50%_at_70%_0%,rgba(239,68,68,0.12),transparent),radial-gradient(70%_50%_at_0%_100%,rgba(59,130,246,0.10),transparent)]"></div>
       </div>
