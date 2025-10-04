@@ -1,12 +1,17 @@
+// src/components/ui/AuthWidget.jsx
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Mail, Lock, Eye, EyeOff, ShieldCheck, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import {
+  Mail, Lock, Eye, EyeOff, ShieldCheck,
+  ArrowRight, AlertCircle, CheckCircle2
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 function cx(...a) { return a.filter(Boolean).join(' '); }
+
 async function postJSON(path, body, setError, setBusy) {
   setBusy?.(true); setError?.('');
   try {
@@ -29,23 +34,23 @@ async function postJSON(path, body, setError, setBusy) {
 }
 
 export default function AuthWidget({ onAuth }) {
-  // только ОДНА форма за раз
+  // показываем ТОЛЬКО одну форму
   const [tab, setTab] = useState('signin'); // 'signin' | 'signup'
 
   // поля
   const [email, setEmail] = useState('');
-  const [pass, setPass]   = useState('');
+  const [pass,  setPass]  = useState('');
   const [pass2, setPass2] = useState('');
 
   // UI
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState('');
-  const [info, setInfo]   = useState('');
+  const [info,  setInfo]  = useState('');
 
   // show/hide
   const [showSignPass, setShowSignPass] = useState(false);
-  const [showUpPass1, setShowUpPass1]   = useState(false);
-  const [showUpPass2, setShowUpPass2]   = useState(false);
+  const [showUpPass1,  setShowUpPass1]  = useState(false);
+  const [showUpPass2,  setShowUpPass2]  = useState(false);
 
   useEffect(() => { setError(''); setInfo(''); }, [tab]);
 
@@ -73,7 +78,7 @@ export default function AuthWidget({ onAuth }) {
 
     await postJSON('/api/auth/register', { email, password: pass }, setError, setBusy);
 
-    // очистить форму и переключить на вход
+    // очистим поля и вернём на вход
     const to = email;
     setEmail(''); setPass(''); setPass2('');
     setTab('signin');
@@ -82,7 +87,7 @@ export default function AuthWidget({ onAuth }) {
 
   return (
     <div className="relative">
-      {/* фирменная полоска */}
+      {/* фирменная полоска сверху */}
       <div className="absolute inset-x-0 -top-4 h-1.5 bg-gradient-to-r from-red-500 via-white to-blue-600 rounded-full" />
 
       <Card className="overflow-hidden shadow-lg">
@@ -99,35 +104,45 @@ export default function AuthWidget({ onAuth }) {
         </CardHeader>
 
         <CardContent className="pt-0">
-          {/* СЕГМЕНТ-ПЕРЕКЛЮЧАТЕЛЬ */}
-          <div className="mb-4 grid grid-cols-2 rounded-xl border p-1">
-            <button
-              type="button"
-              onClick={() => setTab('signin')}
+          {/* СЕГМЕНТ-ПЕРЕКЛЮЧАТЕЛЬ с «пилюлей»-индикатором */}
+          <div className="relative mb-4 rounded-xl border p-1">
+            <div
               className={cx(
-                'rounded-lg py-2 text-sm transition',
-                tab === 'signin'
-                  ? 'bg-foreground text-background'
-                  : 'text-foreground/70 hover:bg-muted'
+                'pointer-events-none absolute top-1 bottom-1 left-1 w-1/2 rounded-lg',
+                'shadow-sm transition-transform duration-200',
+                'bg-gradient-to-r from-red-500/25 via-red-400/25 to-blue-600/25',
+                tab === 'signin' ? 'translate-x-0' : 'translate-x-full'
               )}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => setTab('signup')}
-              className={cx(
-                'rounded-lg py-2 text-sm transition',
-                tab === 'signup'
-                  ? 'bg-foreground text-background'
-                  : 'text-foreground/70 hover:bg-muted'
-              )}
-            >
-              Sign up
-            </button>
+            />
+            <div className="relative z-10 grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => setTab('signin')}
+                aria-selected={tab === 'signin'}
+                className={cx(
+                  'rounded-lg py-2 text-sm transition',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500',
+                  tab === 'signin' ? 'font-semibold text-foreground' : 'text-foreground/60 hover:text-foreground'
+                )}
+              >
+                Sign in
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab('signup')}
+                aria-selected={tab === 'signup'}
+                className={cx(
+                  'rounded-lg py-2 text-sm transition',
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500',
+                  tab === 'signup' ? 'font-semibold text-foreground' : 'text-foreground/60 hover:text-foreground'
+                )}
+              >
+                Sign up
+              </button>
+            </div>
           </div>
 
-          {/* banners */}
+          {/* баннеры */}
           {!!info && (
             <div className="mt-3 mb-4 flex items-start gap-2 rounded-xl border p-3 text-sm">
               <CheckCircle2 className="mt-0.5 h-4 w-4 text-green-600" />
@@ -301,7 +316,7 @@ export default function AuthWidget({ onAuth }) {
         </CardContent>
       </Card>
 
-      {/* лёгкое бренд-свечение на фоне */}
+      {/* лёгкое бренд-свечение сзади */}
       <div className="pointer-events-none absolute -inset-4 -z-10 blur-2xl opacity-60" aria-hidden>
         <div className="h-full w-full bg-[radial-gradient(70%_50%_at_70%_0%,rgba(239,68,68,0.12),transparent),radial-gradient(70%_50%_at_0%_100%,rgba(59,130,246,0.10),transparent)]"></div>
       </div>
